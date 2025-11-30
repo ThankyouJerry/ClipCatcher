@@ -1,0 +1,99 @@
+name: Build and Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v3
+      
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+      
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+      
+      - name: Build with PyInstaller
+        run: |
+          pyinstaller build.spec
+      
+      - name: Create ZIP archive
+        run: |
+          Compress-Archive -Path dist/ChzzkDownloader -DestinationPath ChzzkDownloader-Windows.zip
+      
+      - name: Upload artifact
+        uses: actions/upload-artifact@v3
+        with:
+          name: ChzzkDownloader-Windows
+          path: ChzzkDownloader-Windows.zip
+
+  build-macos:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v3
+      
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+      
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+      
+      - name: Build with PyInstaller
+        run: |
+          pyinstaller build.spec
+      
+      - name: Create DMG
+        run: |
+          brew install create-dmg
+          create-dmg \
+            --volname "Chzzk Downloader" \
+            --window-size 600 400 \
+            --icon-size 100 \
+            --app-drop-link 450 150 \
+            ChzzkDownloader-macOS.dmg \
+            dist/ChzzkDownloader.app
+      
+      - name: Upload artifact
+        uses: actions/upload-artifact@v3
+        with:
+          name: ChzzkDownloader-macOS
+          path: ChzzkDownloader-macOS.dmg
+
+  release:
+    needs: [build-windows, build-macos]
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/')
+    steps:
+      - name: Download Windows artifact
+        uses: actions/download-artifact@v3
+        with:
+          name: ChzzkDownloader-Windows
+      
+      - name: Download macOS artifact
+        uses: actions/download-artifact@v3
+        with:
+          name: ChzzkDownloader-macOS
+      
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: |
+            ChzzkDownloader-Windows.zip
+            ChzzkDownloader-macOS.dmg
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
