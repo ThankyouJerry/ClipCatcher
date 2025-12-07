@@ -98,6 +98,33 @@ xattr -cr ChzzkDownloader.app
 
 또는 `시스템 환경설정` → `보안 및 개인 정보 보호` → `확인 없이 열기`
 
+#### macOS 실행 파일이 열리지 않을 때
+
+GitHub Actions에서 빌드한 파일이 실행되지 않는다면:
+
+**방법 1: 보안 속성 제거 (권장)**
+```bash
+# 터미널에서 실행
+cd ~/Downloads  # 다운로드한 위치로 이동
+xattr -cr ChzzkDownloader.app
+open ChzzkDownloader.app
+```
+
+**방법 2: Python으로 직접 실행**
+
+실행 파일이 계속 문제가 있다면 Python으로 실행하는 것이 가장 확실합니다:
+```bash
+git clone https://github.com/SamKSH/chzzkdownloader-gui.git
+cd chzzkdownloader-gui
+pip3 install -r requirements.txt
+python3 src/main.py
+```
+
+**방법 3: 로컬 빌드 버전 사용**
+
+GitHub Release에서 "로컬 빌드" 태그가 있는 버전을 다운로드하세요.
+(GitHub Actions 빌드가 아닌 로컬에서 빌드한 버전)
+
 ---
 
 ## 🎯 사용 방법
