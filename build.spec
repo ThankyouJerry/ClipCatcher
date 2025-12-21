@@ -29,6 +29,7 @@ a = Analysis(
         'core',
         'core.chzzk_api',
         'core.downloader',
+        'core.segment_downloader',
         'core.config',
     ],
     hookspath=[],

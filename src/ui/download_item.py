@@ -138,10 +138,17 @@ class DownloadItemWidget(QWidget):
         
         self.setLayout(widget_layout)
     
+
+    
     def update_progress(self, progress: int, speed: float, eta: int):
         """Update download progress"""
         self.progress_bar.setValue(progress)
         
+        # If speed/eta are 0 (e.g. manual download), don't overwrite status label
+        # because update_status might be showing detailed info (e.g. segment count)
+        if speed == 0 and eta == 0:
+            return
+            
         # Format speed
         if speed > 0:
             speed_mb = speed / (1024 * 1024)

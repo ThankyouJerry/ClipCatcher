@@ -8,8 +8,16 @@ echo "🧹 Cleaning previous builds..."
 rm -rf build dist
 
 # Build with PyInstaller
+# Build with PyInstaller
 echo "📦 Building application..."
-pyinstaller build.spec
+PY_BIN="../ytdlp-venv/bin/python3"
+
+if [ ! -f "$PY_BIN" ]; then
+    # Fallback to system python/pyinstaller if venv not found (or user running inside venv)
+    pyinstaller build.spec
+else
+    "$PY_BIN" -m PyInstaller build.spec
+fi
 
 if [ $? -eq 0 ]; then
     echo "✅ Build successful!"

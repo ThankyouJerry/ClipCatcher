@@ -69,6 +69,9 @@ class ChzzkAPI:
                 # Extract resolutions
                 resolutions = self._parse_resolutions(video)
                 
+                # Get vodStatus to check download availability
+                vod_status = video.get('vodStatus', 'UNKNOWN')
+                
                 return {
                     'id': video.get('videoNo'),
                     'type': 'vod',
@@ -78,6 +81,9 @@ class ChzzkAPI:
                     'channel_name': video.get('channel', {}).get('channelName', 'Unknown'),
                     'publish_date': video.get('publishDate', ''),
                     'resolutions': resolutions,
+                    'vod_status': vod_status,
+                    'is_downloadable': vod_status == 'ABR_HLS',
+                    'liveRewindPlaybackJson': video.get('liveRewindPlaybackJson')
                 }
     
     async def fetch_clip_metadata(self, clip_id: str, cookies: str = "") -> Dict:
@@ -122,6 +128,8 @@ class ChzzkAPI:
                         'label': 'Original',
                         'url': clip.get('videoUrl', ''),
                     }],
+                    'vod_status': 'ABR_HLS',  # Clips are always ready
+                    'is_downloadable': True,
                 }
     
     def _parse_resolutions(self, video: Dict) -> List[Dict]:
@@ -163,3 +171,82 @@ class ChzzkAPI:
             print(f"Error parsing resolutions: {e}")
         
         return resolutions
+    
+    @staticmethod
+    def get_master_playlist_url(video_data: dict) -> Optional[str]:
+        """
+        Get the original Master Playlist URL from metadata
+        
+        Args:
+            video_data: Video metadata dictionary
+        
+        Returns:
+            Master Playlist URL or None
+        """
+        raw_json_str = video_data.get('liveRewindPlaybackJson')
+        if not raw_json_str:
+            return None
+            
+        try:
+            playback_data = json.loads(raw_json_str)
+            media_list = playback_data.get('media', [])
+            
+            for media in media_list:
+                if media.get('path'):
+                    return media.get('path')
+                    
+        except Exception:
+            pass
+            
+        return None
+
+    @staticmethod
+    def get_m3u8_url(video_data: dict, quality: str = '1080p') -> Optional[str]:
+        """
+        Extract m3u8 URL for a specific quality from liveRewindPlaybackJson
+        
+        Args:
+            video_data: Video metadata dict (from fetch_vod_metadata)
+            quality: Quality to extract (e.g., '1080p', '720p')
+        
+        Returns:
+            m3u8 URL for specified quality, or None if not found
+        """
+        try:
+            # Get raw video content if passed from API response
+            if 'content' in video_data:
+                video_data = video_data['content']
+            
+            playback_json_str = video_data.get('liveRewindPlaybackJson')
+            if not playback_json_str:
+                return None
+            
+            playback_data = json.loads(playback_json_str)
+            
+            if not playback_data.get('media') or len(playback_data['media']) == 0:
+                return None
+            
+            media = playback_data['media'][0]
+            master_url = media.get('path', '')
+            
+            if not master_url:
+                return None
+            
+            # Replace vod_playlist.m3u8 with specific quality chunklist
+            # e.g., https://.../vod_playlist.m3u8 -> https://.../1080p/vod_chunklist.m3u8
+            base_url = master_url.rsplit('/', 1)[0]
+            quality_number = quality.replace('p', '')  # '1080p' -> '1080'
+            
+            # Construct variant playlist URL
+            variant_url = f"{base_url}/{quality_number}p/vod_chunklist.m3u8"
+            
+            # Preserve query parameters from master URL
+            if '?' in master_url:
+                query_params = master_url.split('?', 1)[1]
+                variant_url = f"{variant_url}?{query_params}"
+            
+            return variant_url
+            
+        except Exception as e:
+            print(f"Error extracting m3u8 URL: {e}")
+            return None

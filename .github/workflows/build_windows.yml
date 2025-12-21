@@ -1,4 +1,4 @@
-name: Build Windows Only
+name: Build Windows
 
 on:
   push:
@@ -19,7 +19,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.9'
+          python-version: '3.11'
       
       - name: Install dependencies
         run: |
@@ -67,12 +67,11 @@ jobs:
             - ChzzkDownloader-Windows.zip (자동 빌드)
             
             ### macOS
-            - macOS 버전은 기존 Release의 로컬 빌드를 사용하세요
-            - 또는 Python으로 실행 (권장)
+            - macOS 버전은 직접 빌드하거나 Python으로 실행하세요.
             
             ### Python 실행 (모든 플랫폼)
             ```bash
-            git clone https://github.com/SamKSH/chzzkdownloader-gui.git
+            git clone https://github.com/ThankyouJerry/chzzkdownloader-gui.git
             cd chzzkdownloader-gui
             pip install -r requirements.txt
             python src/main.py

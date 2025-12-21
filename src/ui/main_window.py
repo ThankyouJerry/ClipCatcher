@@ -10,7 +10,7 @@ from PyQt6.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QLabel, QLineEdit, QPushButton, QComboBox,
     QListWidget, QListWidgetItem, QMessageBox, QMenuBar,
-    QGroupBox, QSizePolicy
+    QGroupBox, QSizePolicy, QFileDialog
 )
 from PyQt6.QtCore import Qt, QSize
 from PyQt6.QtGui import QAction, QPixmap
@@ -33,6 +33,12 @@ class MainWindow(QMainWindow):
         self.download_manager = DownloadManager()
         self.current_metadata = None
         self.download_widgets = {}  # download_id -> widget
+        
+        # Load download path from config or default
+        default_path = os.path.join(os.getcwd(), "downloads")
+        self.download_path = self.config.get("download_path", default_path)
+        if not os.path.exists(self.download_path):
+            os.makedirs(self.download_path, exist_ok=True)
         
         self.setWindowTitle("Chzzk Downloader")
         self.setMinimumSize(900, 700)
@@ -92,11 +98,29 @@ class MainWindow(QMainWindow):
         self.url_input.returnPressed.connect(self._fetch_metadata)
         input_layout.addWidget(self.url_input)
         
+        # Status indicator
+        self.status_indicator = QLabel("⚪")
+        self.status_indicator.setStyleSheet("""
+            QLabel {
+                font-size: 24px;
+                padding: 0 8px;
+            }
+        """)
+        self.status_indicator.setToolTip("URL 입력 후 정보를 가져오면 다운로드 가능 여부가 표시됩니다")
+        input_layout.addWidget(self.status_indicator)
+        
         self.fetch_button = QPushButton("정보 가져오기")
         self.fetch_button.clicked.connect(self._fetch_metadata)
         input_layout.addWidget(self.fetch_button)
         
         layout.addLayout(input_layout)
+        
+        # Status message label (hidden by default)
+        self.status_message_label = QLabel()
+        self.status_message_label.setWordWrap(True)
+        self.status_message_label.setVisible(False)
+        layout.addWidget(self.status_message_label)
+        
         group.setLayout(layout)
         return group
     
@@ -174,19 +198,30 @@ class MainWindow(QMainWindow):
         """Fetch video metadata from URL"""
         url = self.url_input.text().strip()
         
+        # Reset status indicator
+        self.status_indicator.setText("⚪")
+        self.status_indicator.setToolTip("확인 중...")
+        self.status_message_label.setVisible(False)
+        
         if not url:
+            self.status_indicator.setText("🔴")
+            self.status_indicator.setToolTip("URL을 입력해주세요")
             QMessageBox.warning(self, "오류", "URL을 입력해주세요.")
             return
         
         # Parse URL
         parsed = self.api.parse_url(url)
         if not parsed:
+            self.status_indicator.setText("🔴")
+            self.status_indicator.setToolTip("올바른 치지직 URL이 아닙니다")
             QMessageBox.warning(self, "오류", "올바른 치지직 URL이 아닙니다.")
             return
         
         # Disable button
         self.fetch_button.setEnabled(False)
         self.fetch_button.setText("가져오는 중...")
+        self.status_indicator.setText("🟡")
+        self.status_indicator.setToolTip("정보를 가져오는 중...")
         
         try:
             # Get cookies
@@ -205,6 +240,8 @@ class MainWindow(QMainWindow):
             self._display_metadata(metadata)
             
         except Exception as e:
+            self.status_indicator.setText("🔴")
+            self.status_indicator.setToolTip(f"오류: {str(e)}")
             QMessageBox.critical(self, "오류", f"메타데이터를 가져오는데 실패했습니다:\n{str(e)}")
         
         finally:
@@ -226,6 +263,38 @@ class MainWindow(QMainWindow):
             f"채널: {metadata['channel_name']} | "
             f"길이: {duration_min}분 {duration_sec}초"
         )
+        
+        # Update download availability indicator
+        is_downloadable = metadata.get('is_downloadable', False)
+        vod_status = metadata.get('vod_status', 'UNKNOWN')
+        
+        if is_downloadable:
+            self.status_indicator.setText("🟢")
+            self.status_indicator.setToolTip("다운로드 가능")
+            self.status_message_label.setVisible(False)
+            self.download_button.setEnabled(True)
+            self.download_button.setText("다운로드")
+        else:
+            # Fast replay / upload state - Manual download available
+            self.status_indicator.setText("🟠")
+            self.status_indicator.setToolTip("수동 다운로드 (느릴 수 있음)")
+            self.status_message_label.setVisible(True)
+            self.status_message_label.setStyleSheet("""
+                QLabel {
+                    color: #FF9F43;
+                    background-color: rgba(255, 159, 67, 0.1);
+                    padding: 10px;
+                    border-radius: 8px;
+                    font-size: 13px;
+                }
+            """)
+            self.status_message_label.setText(
+                f"⚠️ 빠른 다시보기 상태 (vodStatus: {vod_status})\n"
+                f"수동 다운로드 모드로 진행됩니다.\n"
+                f"속도가 느릴 수 있으며, 완료까지 시간이 걸립니다."
+            )
+            self.download_button.setEnabled(True)
+            self.download_button.setText("수동 다운로드 시작")
         
         # Populate quality combo
         self.quality_combo.clear()
@@ -252,6 +321,13 @@ class MainWindow(QMainWindow):
         # Get cookies
         cookies = self.config.get_cookies()
         
+        # Prepare download parameters
+        use_manual_download = False
+        
+        # Check if manual download is needed (for fast replay videos)
+        if self.current_metadata.get('vod_status') != 'ABR_HLS' and self.current_metadata.get('type') == 'vod':
+            use_manual_download = True
+
         # Start download
         download_id = self.download_manager.start_download(
             video_id=self.current_metadata['id'],
@@ -259,7 +335,8 @@ class MainWindow(QMainWindow):
             title=self.current_metadata['title'],
             quality=selected_res['label'],  # Pass quality label (e.g., "1080p")
             output_dir=download_path,
-            cookies=cookies
+            cookies=cookies,
+            use_manual_download=use_manual_download
         )
         
         # Create download widget
@@ -276,6 +353,9 @@ class MainWindow(QMainWindow):
             worker.status_changed.connect(widget.update_status)
             worker.download_completed.connect(widget.set_completed)
             worker.download_error.connect(widget.set_error)
+            
+            # Start download
+            worker.start()
         
         widget.cancel_requested.connect(self._cancel_download)
         widget.open_file_requested.connect(self._open_file)

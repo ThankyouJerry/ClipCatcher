@@ -1,13 +1,16 @@
 """
-Download Manager using yt-dlp
+Download Manager with automatic method selection
 """
 import os
 import uuid
 import tempfile
+import asyncio
 from pathlib import Path
 from typing import Dict, Optional
 from PyQt6.QtCore import QObject, pyqtSignal, QThread
 import yt_dlp
+
+from core.segment_downloader import SegmentDownloader
 
 class DownloadWorker(QThread):
     """Worker thread for downloading videos"""
@@ -17,16 +20,114 @@ class DownloadWorker(QThread):
     download_completed = pyqtSignal(str)  # output_path
     download_error = pyqtSignal(str)  # error_message
     
-    def __init__(self, url: str, output_path: str, cookies: str = ""):
+    def __init__(
+        self, 
+        url: str, 
+        output_path: str, 
+        cookies: str = "",
+        use_manual_download: bool = False,
+        video_id: Optional[str] = None,
+        quality: Optional[str] = None
+    ):
         super().__init__()
         self.url = url
         self.output_path = output_path
         self.cookies = cookies
+        self.use_manual_download = use_manual_download
+        self.video_id = video_id
+        self.quality = quality
         self.should_stop = False
         self.cookie_file = None
     
     def run(self):
         """Run the download"""
+        try:
+            if self.use_manual_download:
+                self._run_manual_download()
+            else:
+                self._run_ytdlp_download()
+        except Exception as e:
+            self.download_error.emit(str(e))
+    
+    def _run_manual_download(self):
+        """Run manual segment download"""
+        try:
+            self.status_changed.emit("수동 다운로드 시작 중...")
+            
+            # Create event loop for async operations
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            
+            # Fetch fresh m3u8 URL (signatures expire quickly)
+            from core.chzzk_api import ChzzkAPI
+            api = ChzzkAPI()
+            
+            try:
+                # Get fresh metadata with valid m3u8 URL
+                fresh_metadata = loop.run_until_complete(
+                    api.fetch_vod_metadata(self.video_id, self.cookies)
+                )
+                
+                # Extract Master Playlist URL first
+                m3u8_url = api.get_master_playlist_url(fresh_metadata)
+                
+                # Fallback to direct media URL if master not available (for old VODs maybe?)
+                if not m3u8_url:
+                    m3u8_url = api.get_m3u8_url(fresh_metadata, self.quality)
+                
+                if not m3u8_url:
+                    raise Exception("Failed to extract m3u8 URL from metadata")
+                    
+            except Exception as e:
+                raise Exception(f"Failed to fetch fresh m3u8 URL: {str(e)}")
+            
+            downloader = SegmentDownloader()
+            
+            def progress_callback(current, total):
+                if self.should_stop:
+                    raise Exception("Download cancelled by user")
+                
+                progress = int((current / total) * 100)
+                self.progress_updated.emit(progress, 0, 0)
+                self.status_changed.emit(f"다운로드 중... ({current}/{total} 세그먼트)")
+            
+            # Parse cookies
+            cookies_dict = {}
+            if self.cookies:
+                for cookie in self.cookies.split(';'):
+                    if '=' in cookie:
+                        key, value = cookie.strip().split('=', 1)
+                        cookies_dict[key] = value
+            
+            # Use same headers as yt-dlp
+            headers = {
+                'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                'Referer': 'https://chzzk.naver.com/',
+                'Origin': 'https://chzzk.naver.com'
+            }
+            
+            # Run async download
+            output_path = loop.run_until_complete(
+                downloader.download_video(
+                    m3u8_url,
+                    self.output_path,
+                    progress_callback,
+                    headers=headers,
+                    cookies=cookies_dict,
+                    target_quality=self.quality
+                )
+            )
+            
+            loop.close()
+            
+            self.status_changed.emit("완료")
+            self.download_completed.emit(output_path)
+            
+        except Exception as e:
+            self.download_error.emit(f"수동 다운로드 실패: {str(e)}")
+    
+    def _run_ytdlp_download(self):
+        """Run yt-dlp download"""
         actual_output_path = None
         
         try:
@@ -142,7 +243,8 @@ class DownloadManager(QObject):
         title: str,
         quality: str,
         output_dir: Path,
-        cookies: str = ""
+        cookies: str = "",
+        use_manual_download: bool = False
     ) -> str:
         """
         Start a new download
@@ -154,6 +256,7 @@ class DownloadManager(QObject):
             quality: Quality label (e.g., "1080p", "720p")
             output_dir: Output directory
             cookies: Cookie string
+            use_manual_download: Whether to use manual segment download
         
         Returns:
             download_id
@@ -166,11 +269,18 @@ class DownloadManager(QObject):
         output_path = str(output_dir / filename)
         
         # Create worker
-        worker = DownloadWorker(url, output_path, cookies)
+        worker = DownloadWorker(
+            url, 
+            output_path, 
+            cookies, 
+            use_manual_download=use_manual_download,
+            video_id=video_id,
+            quality=quality
+        )
         self.active_downloads[download_id] = worker
         
-        # Start download
-        worker.start()
+        # NOTE: Worker is NOT started here anymore. 
+        # Caller must connect signals first and then call worker.start()
         
         return download_id
     

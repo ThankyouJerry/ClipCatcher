@@ -247,28 +247,25 @@ python src/main.py
 
 ### 실행 파일 빌드
 
-#### Windows
+#### macOS (로컬 빌드)
+
+제공된 스크립트로 로컬에서 빌드합니다.
 
 ```bash
-pyinstaller build.spec
-# 출력: dist/ChzzkDownloader.exe
+# 가상환경이 있다면 활성화 후 실행 (선택사항)
+./build_macos.sh
 ```
 
-#### macOS
+- **결과물**: `dist/ChzzkDownloader.app`
 
-```bash
-pyinstaller build.spec
-# 출력: dist/ChzzkDownloader.app
+#### Windows (GitHub Actions)
 
-# DMG 생성 (선택사항)
-create-dmg \
-  --volname "Chzzk Downloader" \
-  --window-size 600 400 \
-  --icon-size 100 \
-  --app-drop-link 450 150 \
-  ChzzkDownloader.dmg \
-  dist/ChzzkDownloader.app
-```
+Windows 실행 파일은 **GitHub Actions**를 통해 자동으로 빌드됩니다.
+
+1. 코드를 GitHub 저장소에 푸시합니다.
+2. **Actions** 탭에서 빌드 진행 상황을 확인합니다.
+3. 빌드가 완료되면 결과Artifacts에서 `ChzzkDownloader-Windows.zip`을 다운로드합니다.
+4. 새로운 버전을 릴리즈하려면 `v*` 태그(예: `v1.0.0`)를 푸시하면 릴리즈가 자동 생성됩니다.
 
 ---
 
