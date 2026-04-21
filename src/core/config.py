@@ -10,7 +10,7 @@ class Config:
     """Application configuration manager"""
     
     DEFAULT_CONFIG = {
-        "download_path": str(Path.home() / "Downloads" / "ChzzkDownloads"),
+        "download_path": str(Path.home() / "Downloads" / "chzzkdownloader"),
         "cookies": {
             "NID_AUT": "",
             "NID_SES": ""

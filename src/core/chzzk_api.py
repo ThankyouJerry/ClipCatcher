@@ -35,6 +35,14 @@ class ChzzkAPI:
         if clip_match:
             return {'type': 'clip', 'id': clip_match.group(1)}
         
+        # YouTube URL
+        yt_match = re.search(
+            r'(?:youtube\.com/watch\?.*v=|youtu\.be/|youtube\.com/shorts/)([a-zA-Z0-9_-]{11})',
+            url
+        )
+        if yt_match:
+            return {'type': 'youtube', 'id': yt_match.group(1), 'url': url}
+        
         return None
     
     async def fetch_vod_metadata(self, video_id: str, cookies: str = "") -> Dict:
@@ -65,12 +73,19 @@ class ChzzkAPI:
                     raise Exception("Video not found")
                 
                 video = data['content']
+                vod_status = video.get('vodStatus', 'UNKNOWN')
+                in_key   = video.get('inKey', '')
+                vid_id   = video.get('videoId', '')
+                page_url = f"https://chzzk.naver.com/video/{video_id}"
                 
-                # Extract resolutions
+                # Try liveRewindPlaybackJson first (VOD_ON_AIR / 빠른다시보기)
                 resolutions = self._parse_resolutions(video)
                 
-                # Get vodStatus to check download availability
-                vod_status = video.get('vodStatus', 'UNKNOWN')
+                # For ABR_HLS: fetch resolutions from DASH media API
+                if not resolutions and vod_status == 'ABR_HLS' and in_key and vid_id:
+                    resolutions = await self._fetch_abr_resolutions(
+                        vid_id, in_key, page_url, headers
+                    )
                 
                 return {
                     'id': video.get('videoNo'),
@@ -83,7 +98,8 @@ class ChzzkAPI:
                     'resolutions': resolutions,
                     'vod_status': vod_status,
                     'is_downloadable': vod_status == 'ABR_HLS',
-                    'liveRewindPlaybackJson': video.get('liveRewindPlaybackJson')
+                    'liveRewindPlaybackJson': video.get('liveRewindPlaybackJson'),
+                    'url': page_url,
                 }
     
     async def fetch_clip_metadata(self, clip_id: str, cookies: str = "") -> Dict:
@@ -132,8 +148,57 @@ class ChzzkAPI:
                     'is_downloadable': True,
                 }
     
+    async def _fetch_abr_resolutions(
+        self, video_id: str, in_key: str, page_url: str, headers: dict
+    ) -> List[Dict]:
+        """ABR_HLS 영상의 화질 목록을 DASH 미디어 API에서 가져옵니다."""
+        resolutions = []
+        try:
+            media_url = (
+                f"https://apis.naver.com/neonplayer/vodplay/v2/playback/{video_id}"
+                f"?key={in_key}&cc=KR&tz=Asia%2FSeoul&lc=ko_KR&cpl=ko_KR"
+                f"&service=chzzk&mediaProtocol=hls&application=PC_WEB"
+            )
+            async with aiohttp.ClientSession() as session:
+                async with session.get(media_url, headers=headers) as resp:
+                    if resp.status != 200:
+                        return resolutions
+                    dash = await resp.json()
+            
+            # DASH MPD JSON → period → adaptationSet → representation
+            periods = dash.get('period', [])
+            seen_heights = set()
+            for period in periods:
+                for adapt in period.get('adaptationSet', []):
+                    if adapt.get('mimeType', '').startswith('video'):
+                        for rep in adapt.get('representation', []):
+                            h = rep.get('height')
+                            if not h or h in seen_heights:
+                                continue
+                            seen_heights.add(h)
+                            # Try to extract qualityId from 'any' field
+                            quality_id = ''
+                            for item in rep.get('any', []):
+                                if item.get('kind') == 'qualityId':
+                                    quality_id = item.get('value', '')
+                                    break
+                            tbr = rep.get('bandwidth', 0)
+                            resolutions.append({
+                                'quality':  quality_id or f'{h}p',
+                                'label':    f'{h}p',
+                                'url':      page_url,  # yt-dlp uses page URL
+                                'height':   h,
+                                'width':    rep.get('width', 0),
+                                'bitrate':  tbr,
+                            })
+            
+            resolutions.sort(key=lambda x: x['height'], reverse=True)
+        except Exception as e:
+            print(f"[ABR] 화질 목록 가져오기 실패: {e}")
+        return resolutions
+
     def _parse_resolutions(self, video: Dict) -> List[Dict]:
-        """Parse available resolutions from liveRewindPlaybackJson"""
+        """Parse available resolutions from liveRewindPlaybackJson (VOD_ON_AIR)"""
         resolutions = []
         
         try:
@@ -157,14 +222,13 @@ class ChzzkAPI:
             for track in encoding_tracks:
                 resolutions.append({
                     'quality': track.get('encodingTrackId', ''),
-                    'label': f"{track.get('videoHeight', 0)}p",
-                    'url': master_url,
-                    'width': track.get('videoWidth', 0),
-                    'height': track.get('videoHeight', 0),
+                    'label':   f"{track.get('videoHeight', 0)}p",
+                    'url':     master_url,
+                    'width':   track.get('videoWidth', 0),
+                    'height':  track.get('videoHeight', 0),
                     'bitrate': track.get('videoBitRate', 0),
                 })
             
-            # Sort by height (descending)
             resolutions.sort(key=lambda x: x['height'], reverse=True)
             
         except Exception as e:

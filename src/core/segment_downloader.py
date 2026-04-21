@@ -253,15 +253,54 @@ class SegmentDownloader:
         segment_paths: List[Path],
         output_path: str
     ):
-        """Combine init segment and media segments into final video"""
-        with open(output_path, 'wb') as outfile:
-            # Write init segment first
+        """
+        Combine init segment and media segments into final video.
+        
+        fMP4 세그먼트를 바이트 단순 결합하면 moov 박스에 올바른 duration이
+        기록되지 않아 QuickTime 등에서 1초만 재생됩니다.
+        ffmpeg으로 재먹싱하여 정상적인 progressive MP4로 변환합니다.
+        """
+        import subprocess
+        import shutil
+
+        ffmpeg_bin = shutil.which("ffmpeg") or "/opt/homebrew/bin/ffmpeg"
+
+        # ── Step 1: 바이트 결합 → 임시 fragmented MP4 ──────────────
+        temp_concat = output_path.replace(".mp4", "_raw.mp4")
+        with open(temp_concat, "wb") as outfile:
             if init_path and init_path.exists():
-                with open(init_path, 'rb') as infile:
-                    outfile.write(infile.read())
-            
-            # Write media segments
+                with open(init_path, "rb") as f:
+                    outfile.write(f.read())
             for seg_path in segment_paths:
                 if seg_path.exists():
-                    with open(seg_path, 'rb') as infile:
-                        outfile.write(infile.read())
+                    with open(seg_path, "rb") as f:
+                        outfile.write(f.read())
+
+        # ── Step 2: ffmpeg으로 remux → progressive MP4 ───────────────
+        try:
+            result = subprocess.run(
+                [
+                    ffmpeg_bin,
+                    "-y",                    # 덮어쓰기 허용
+                    "-i", temp_concat,       # 입력: fragmented MP4
+                    "-c", "copy",            # 재인코딩 없이 컨테이너만 변환
+                    "-movflags", "+faststart",  # moov를 앞으로 이동 (웹 스트리밍 최적화)
+                    output_path,
+                ],
+                capture_output=True,
+                text=True,
+            )
+            if result.returncode != 0:
+                # ffmpeg 실패 시 단순 결합 파일을 그대로 사용
+                print(f"[ffmpeg 경고] remux 실패, 원본 유지:\n{result.stderr[-500:]}")
+                import os
+                os.replace(temp_concat, output_path)
+            else:
+                import os
+                os.remove(temp_concat)
+        except FileNotFoundError:
+            # ffmpeg 없음 → 단순 결합 파일을 그대로 사용
+            import os
+            print("[경고] ffmpeg을 찾을 수 없습니다. 재생이 정상적이지 않을 수 있습니다.")
+            os.replace(temp_concat, output_path)
+

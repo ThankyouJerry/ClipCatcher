@@ -29,7 +29,8 @@ class DownloadWorker(QThread):
         video_id: Optional[str] = None,
         quality: Optional[str] = None,
         start_time: Optional[float] = None,
-        end_time: Optional[float] = None
+        end_time: Optional[float] = None,
+        format_selector: Optional[str] = None,  # yt-dlp format selector (YouTube quality)
     ):
         super().__init__()
         self.url = url
@@ -40,6 +41,7 @@ class DownloadWorker(QThread):
         self.quality = quality
         self.start_time = start_time
         self.end_time = end_time
+        self.format_selector = format_selector
         self.should_stop = False
         self.cookie_file = None
     
@@ -133,7 +135,115 @@ class DownloadWorker(QThread):
             self.download_error.emit(f"수동 다운로드 실패: {str(e)}")
     
     def _run_ytdlp_download(self):
-        """Run yt-dlp download"""
+        """Run yt-dlp download.
+        
+        YouTube (format_selector 있음): 시스템 yt-dlp 바이너리 사용 (최신 버전)
+        Chzzk   (format_selector 없음): Python yt_dlp 패키지 사용 (기존 방식)
+        """
+        if self.format_selector is not None:
+            self._run_ytdlp_binary_download()
+        else:
+            self._run_ytdlp_package_download()
+
+    def _run_ytdlp_binary_download(self):
+        """YouTube 전용: 시스템 yt-dlp 바이너리로 다운로드"""
+        import shutil
+        import subprocess
+        import re as _re
+        import os
+
+        ytdlp_bin = shutil.which("yt-dlp") or "/opt/homebrew/bin/yt-dlp"
+        output_template = self.output_path + ".%(ext)s"
+
+        cmd = [
+            ytdlp_bin,
+            "-f", self.format_selector,
+            "--merge-output-format", "mp4",
+            "--newline",            # 진행률 한 줄씩 출력
+            "--no-warnings",
+            "-o", output_template,
+            self.url,
+        ]
+
+        # 시간 범위 다운로드
+        if self.start_time is not None or self.end_time is not None:
+            start = self.start_time or 0
+            end   = self.end_time or float('inf')
+            # yt-dlp download-sections 형식: "*start-end"
+            if end == float('inf'):
+                section = f"*{start}-inf"
+            else:
+                section = f"*{start}-{end}"
+            cmd += ["--download-sections", section]
+
+        print(f"DEBUG: Running yt-dlp binary: {' '.join(cmd)}")
+        self.status_changed.emit("다운로드 시작 중...")
+
+        # 진행률 파싱용 패턴
+        pct_re   = _re.compile(r'\[download\]\s+([\d.]+)%')
+        speed_re = _re.compile(r'([\d.]+)([KMG]?)iB/s')
+        eta_re   = _re.compile(r'ETA\s+([\d:]+)')
+
+        def _parse_speed(m):
+            val = float(m.group(1))
+            unit = m.group(2)
+            mul = {'K': 1024, 'M': 1024**2, 'G': 1024**3}.get(unit, 1)
+            return int(val * mul)
+
+        def _parse_eta(s):
+            parts = s.split(':')
+            try:
+                if len(parts) == 3:
+                    return int(parts[0])*3600 + int(parts[1])*60 + int(parts[2])
+                elif len(parts) == 2:
+                    return int(parts[0])*60 + int(parts[1])
+                return int(parts[0])
+            except Exception:
+                return 0
+
+        # Inject PATH so yt-dlp can find ffmpeg
+        env = os.environ.copy()
+        env['PATH'] = f"/opt/homebrew/bin:/usr/local/bin:{env.get('PATH', '')}"
+
+        proc = subprocess.Popen(
+            cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+            text=True, bufsize=1, env=env
+        )
+
+        output_path = self.output_path + ".mp4"
+        for line in proc.stdout:
+            if self.should_stop:
+                proc.terminate()
+                return
+
+            line = line.strip()
+            print(f"YTDLP OUT: {line}")
+            pm = pct_re.search(line)
+            if pm:
+                pct   = int(float(pm.group(1)))
+                speed = _parse_speed(speed_re.search(line)) if speed_re.search(line) else 0
+                eta   = _parse_eta(eta_re.search(line).group(1)) if eta_re.search(line) else 0
+                self.progress_updated.emit(pct, speed, eta)
+                self.status_changed.emit(f"다운로드 중... {pm.group(1)}%")
+
+            # yt-dlp가 저장한 실제 파일 경로 추적
+            dest_m = _re.search(r'\[download\] Destination: (.+)', line)
+            if dest_m:
+                output_path = dest_m.group(1).strip()
+            merge_m = _re.search(r'\[Merger\] Merging formats into "(.+)"', line)
+            if merge_m:
+                output_path = merge_m.group(1).strip()
+
+        proc.wait()
+        print(f"DEBUG: yt-dlp finished with code {proc.returncode}")
+        if proc.returncode != 0:
+            raise Exception(f"yt-dlp 다운로드 실패 (코드 {proc.returncode})")
+
+        self.status_changed.emit("완료")
+        self.download_completed.emit(output_path)
+
+    def _run_ytdlp_package_download(self):
+        """Chzzk 전용: Python yt_dlp 패키지로 다운로드"""
         actual_output_path = None
         
         try:
@@ -147,14 +257,18 @@ class DownloadWorker(QThread):
                 self.cookie_file.write(self.cookies)
                 self.cookie_file.close()
             
-            # Configure yt-dlp options
+            fmt = self.format_selector or 'bestvideo+bestaudio/best'
             ydl_opts = {
-                'format': 'bestvideo+bestaudio/best',
-                'outtmpl': self.output_path + '.%(ext)s',  # Let yt-dlp add extension
+                'format': fmt,
+                'outtmpl': self.output_path + '.%(ext)s',
                 'merge_output_format': 'mp4',
                 'progress_hooks': [self._progress_hook],
                 'quiet': True,
                 'no_warnings': True,
+                'postprocessors': [{
+                    'key': 'FFmpegVideoConvertor',
+                    'preferedformat': 'mp4',
+                }],
                 'http_headers': {
                     'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36',
                 }
@@ -168,29 +282,20 @@ class DownloadWorker(QThread):
                         'end_time': self.end_time if self.end_time is not None else float('inf')
                     }]
                 ydl_opts['download_ranges'] = download_ranges_callback
-                # Force keyframes at cuts for precision (optional, might re-encode)
-                # ydl_opts['force_keyframes_at_cuts'] = True 
             
             if self.cookie_file:
                 ydl_opts['cookiefile'] = self.cookie_file.name
             
-            # Start download
             self.status_changed.emit("다운로드 시작 중...")
             
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                 if self.should_stop:
                     return
-                
-                # Download and get info
                 info = ydl.extract_info(self.url, download=True)
-                
-                # Get the actual output filename
                 if info:
                     actual_output_path = ydl.prepare_filename(info)
             
             self.status_changed.emit("완료")
-            
-            # Use actual path if available, otherwise fallback to expected path
             final_path = actual_output_path if actual_output_path else (self.output_path + '.mp4')
             self.download_completed.emit(final_path)
             
@@ -198,7 +303,6 @@ class DownloadWorker(QThread):
             self.download_error.emit(str(e))
         
         finally:
-            # Cleanup cookie file
             if self.cookie_file and os.path.exists(self.cookie_file.name):
                 try:
                     os.remove(self.cookie_file.name)
@@ -263,7 +367,8 @@ class DownloadManager(QObject):
         cookies: str = "",
         use_manual_download: bool = False,
         start_time: Optional[float] = None,
-        end_time: Optional[float] = None
+        end_time: Optional[float] = None,
+        format_selector: Optional[str] = None,
     ) -> str:
         """
         Start a new download
@@ -278,25 +383,18 @@ class DownloadManager(QObject):
             use_manual_download: Whether to use manual segment download
             start_time: Start time in seconds
             end_time: End time in seconds
+            format_selector: yt-dlp format selector string (YouTube quality)
         
         Returns:
             download_id
         """
         download_id = str(uuid.uuid4())
         
-        # Sanitize filename and add quality
+        # Sanitize filename
         safe_title = self._sanitize_filename(title)
-        
-        # Add part info to filename if range download
         filename_suffix = quality
-        if start_time is not None:
-             # Just a simple check to differentiate, exact part name is handled by caller in title usually,
-             # but we can append range info or rely on title passed being unique.
-             # Ideally title passed to this function should already distinguish the part.
-             pass
-             
         filename = f"{safe_title}_{filename_suffix}"
-        output_path = str(output_dir / filename)
+        output_path = str(Path(output_dir) / filename)
         
         # Create worker
         worker = DownloadWorker(
@@ -307,11 +405,12 @@ class DownloadManager(QObject):
             video_id=video_id,
             quality=quality,
             start_time=start_time,
-            end_time=end_time
+            end_time=end_time,
+            format_selector=format_selector,
         )
         self.active_downloads[download_id] = worker
         
-        # NOTE: Worker is NOT started here anymore. 
+        # NOTE: Worker is NOT started here. 
         # Caller must connect signals first and then call worker.start()
         
         return download_id

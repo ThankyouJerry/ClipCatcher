@@ -19,7 +19,9 @@ from qasync import asyncSlot
 
 from ui.download_item import DownloadItemWidget
 from ui.settings_dialog import SettingsDialog
+from ui.time_range_widget import TimeRangeWidget
 from core.chzzk_api import ChzzkAPI
+from core.youtube_api import YouTubeAPI
 from core.downloader import DownloadManager
 from core.config import Config
 
@@ -31,6 +33,7 @@ class MainWindow(QMainWindow):
         super().__init__()
         self.config = config
         self.api = ChzzkAPI()
+        self.youtube_api = YouTubeAPI()
         self.download_manager = DownloadManager()
         self.current_metadata = None
         self.download_widgets = {}  # download_id -> widget
@@ -42,30 +45,29 @@ class MainWindow(QMainWindow):
             os.makedirs(self.download_path, exist_ok=True)
         
         self.setWindowTitle("Chzzk Downloader")
-        self.setMinimumSize(900, 700)
+        self.setMinimumSize(1000, 750)
+        self.resize(1100, 820)
         
         self._init_ui()
         self._create_menu_bar()
     
     def _init_ui(self):
         """Initialize the user interface"""
-        # Central widget
         central_widget = QWidget()
         self.setCentralWidget(central_widget)
         
-        # Main layout
         main_layout = QVBoxLayout()
-        main_layout.setSpacing(20)
-        main_layout.setContentsMargins(20, 20, 20, 20)
+        main_layout.setSpacing(14)
+        main_layout.setContentsMargins(24, 16, 24, 16)
         
         # Header
         header_label = QLabel("🎥 Chzzk Downloader")
         header_label.setStyleSheet("""
             QLabel {
-                font-size: 24px;
+                font-size: 22px;
                 font-weight: 700;
                 color: #00FFA3;
-                padding: 10px 0;
+                padding: 6px 0;
             }
         """)
         main_layout.addWidget(header_label)
@@ -74,14 +76,19 @@ class MainWindow(QMainWindow):
         url_group = self._create_url_input_section()
         main_layout.addWidget(url_group)
         
-        # Video Info Section
+        # Video Info Section (hidden until URL fetched)
         self.info_group = self._create_video_info_section()
         self.info_group.setVisible(False)
         main_layout.addWidget(self.info_group)
         
-        # Download Queue Section
+        # Time Range Widget (independent section, hidden until URL fetched)
+        self.time_range_widget = TimeRangeWidget()
+        self.time_range_widget.setVisible(False)
+        main_layout.addWidget(self.time_range_widget)
+        
+        # Download Queue Section (stretches to fill remaining space)
         queue_group = self._create_download_queue_section()
-        main_layout.addWidget(queue_group)
+        main_layout.addWidget(queue_group, stretch=1)
         
         central_widget.setLayout(main_layout)
     
@@ -129,32 +136,71 @@ class MainWindow(QMainWindow):
         """Create video info display section"""
         group = QGroupBox("영상 정보")
         layout = QVBoxLayout()
-        layout.setSpacing(12)
+        layout.setSpacing(14)
+        layout.setContentsMargins(14, 14, 14, 14)
         
-        # Title
+        # ── Row 1: Thumbnail + Title/Channel ──────────────────
+        top_row = QHBoxLayout()
+        top_row.setSpacing(16)
+        
+        # Thumbnail: 16:9, larger
+        self.thumbnail_label = QLabel()
+        self.thumbnail_label.setFixedSize(240, 135)
+        self.thumbnail_label.setStyleSheet("""
+            QLabel {
+                background-color: #363650;
+                border-radius: 8px;
+                font-size: 36px;
+            }
+        """)
+        self.thumbnail_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.thumbnail_label.setText("📹")
+        top_row.addWidget(self.thumbnail_label)
+        
+        # Title + channel + date (right of thumbnail)
+        text_col = QVBoxLayout()
+        text_col.setSpacing(8)
+        text_col.setContentsMargins(0, 4, 0, 4)
+        
         self.title_label = QLabel()
         self.title_label.setObjectName("titleLabel")
         self.title_label.setWordWrap(True)
-        layout.addWidget(self.title_label)
+        self.title_label.setStyleSheet("font-size: 15px; font-weight: 700; color: #eee;")
+        text_col.addWidget(self.title_label)
         
-        # Channel and duration
-        self.meta_label = QLabel()
-        self.meta_label.setObjectName("subtitleLabel")
-        layout.addWidget(self.meta_label)
+        self.channel_name = QLabel()
+        self.channel_name.setStyleSheet("font-size: 13px; color: #aaa;")
+        text_col.addWidget(self.channel_name)
         
-        # Quality selection
-        quality_layout = QHBoxLayout()
-        quality_layout.addWidget(QLabel("화질 선택:"))
+        self.video_date = QLabel()
+        self.video_date.setStyleSheet("font-size: 12px; color: #777;")
+        text_col.addWidget(self.video_date)
+        
+        text_col.addStretch()
+        top_row.addLayout(text_col, stretch=1)
+        layout.addLayout(top_row)
+        
+        # ── Row 2: Quality + Download button ──────────────────
+        quality_row = QHBoxLayout()
+        quality_row.setSpacing(10)
+        
+        quality_label = QLabel("화질:")
+        quality_label.setFixedWidth(36)
+        quality_label.setStyleSheet("color: #aaa; font-size: 13px;")
+        quality_row.addWidget(quality_label)
         
         self.quality_combo = QComboBox()
         self.quality_combo.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
-        quality_layout.addWidget(self.quality_combo)
+        self.quality_combo.setMinimumHeight(38)
+        quality_row.addWidget(self.quality_combo)
         
         self.download_button = QPushButton("다운로드")
+        self.download_button.setMinimumWidth(140)
+        self.download_button.setMinimumHeight(38)
         self.download_button.clicked.connect(self._start_download)
-        quality_layout.addWidget(self.download_button)
+        quality_row.addWidget(self.download_button)
         
-        layout.addLayout(quality_layout)
+        layout.addLayout(quality_row)
         group.setLayout(layout)
         return group
     
@@ -205,10 +251,9 @@ class MainWindow(QMainWindow):
         self.status_message_label.setVisible(False)
         
         # Hide info sections
-        self.info_container.setVisible(False)
-        self.part_selector.setVisible(False)
-        self.quality_frame.setVisible(False)
-        self.download_btn.setEnabled(False)
+        self.info_group.setVisible(False)
+        self.time_range_widget.setVisible(False)
+        self.download_button.setEnabled(False)
         
         if not url:
             self.status_indicator.setText("🔴")
@@ -216,12 +261,12 @@ class MainWindow(QMainWindow):
             QMessageBox.warning(self, "오류", "URL을 입력해주세요.")
             return
         
-        # Parse URL
+        # Parse URL (Chzzk or YouTube)
         parsed = self.api.parse_url(url)
         if not parsed:
             self.status_indicator.setText("🔴")
-            self.status_indicator.setToolTip("올바른 치지직 URL이 아닙니다")
-            QMessageBox.warning(self, "오류", "올바른 치지직 URL이 아닙니다.")
+            self.status_indicator.setToolTip("지원하지 않는 URL입니다")
+            QMessageBox.warning(self, "오류", "올바른 치지직 또는 YouTube URL을 입력해주세요.")
             return
         
         # Disable button
@@ -231,14 +276,20 @@ class MainWindow(QMainWindow):
         self.status_indicator.setToolTip("정보를 가져오는 중...")
         
         try:
-            # Get cookies
+            # Get cookies (Chzzk only)
             cookies_dict = self.config.get("cookies", {})
             cookie_str = ""
             if cookies_dict.get("NID_AUT") and cookies_dict.get("NID_SES"):
                 cookie_str = f"NID_AUT={cookies_dict['NID_AUT']}; NID_SES={cookies_dict['NID_SES']}"
             
             # Fetch metadata
-            if parsed['type'] == 'vod':
+            if parsed['type'] == 'youtube':
+                # yt-dlp is synchronous → run in thread pool
+                loop = asyncio.get_event_loop()
+                metadata = await loop.run_in_executor(
+                    None, self.youtube_api.fetch_metadata, url
+                )
+            elif parsed['type'] == 'vod':
                 metadata = await self.api.fetch_vod_metadata(parsed['id'], cookie_str)
             else:
                 metadata = await self.api.fetch_clip_metadata(parsed['id'], cookie_str)
@@ -260,21 +311,20 @@ class MainWindow(QMainWindow):
         self.current_metadata = metadata
         
         # Show info sections
-        self.info_container.setVisible(True)
-        self.part_selector.setVisible(True)
-        self.quality_frame.setVisible(True)
+        self.info_group.setVisible(True)
         
         # Update text info
-        self.video_title.setText(metadata['title'])
-        self.channel_name.setText(metadata['channel_name'])
+        self.title_label.setText(metadata['title'])
+        self.channel_name.setText(metadata.get('channel_name', ''))
         
-        # Format publish date if available, otherwise use empty string
+        # Format publish date if available
         publish_date = metadata.get('publish_date', '')
         self.video_date.setText(publish_date)
         
-        # Update Part Selector with duration
+        # Update Time Range Widget with duration, and show it
         duration = metadata.get('duration', 0)
-        self.part_selector.set_duration(duration)
+        self.time_range_widget.set_duration(duration)
+        self.time_range_widget.setVisible(True)
         
         # Update status indicator
         is_downloadable = metadata.get('is_downloadable', False)
@@ -284,8 +334,8 @@ class MainWindow(QMainWindow):
             self.status_indicator.setText("🟢")
             self.status_indicator.setToolTip("다운로드 가능")
             self.status_message_label.setVisible(False)
-            self.download_btn.setEnabled(True)
-            self.download_btn.setText("다운로드")
+            self.download_button.setEnabled(True)
+            self.download_button.setText("다운로드")
         else:
             # Fast replay / upload state - Manual download available
             self.status_indicator.setText("🟠")
@@ -305,16 +355,20 @@ class MainWindow(QMainWindow):
                 f"수동 다운로드 모드로 진행됩니다.\n"
                 f"속도가 느릴 수 있으며, 완료까지 시간이 걸립니다."
             )
-            self.download_btn.setEnabled(True)
-            self.download_btn.setText("수동 다운로드 시작")
+            self.download_button.setEnabled(True)
+            self.download_button.setText("수동 다운로드 시작")
         
-        # Load thumbnail async (assuming _load_thumbnail exists or will be added)
-        # For now, just set a placeholder or handle it if it's not critical
-        # self._load_thumbnail(metadata['thumbnail']) 
-        # Placeholder for thumbnail loading
-        pixmap = QPixmap()
-        if pixmap.loadFromData(self.api.get_thumbnail_data(metadata.get('thumbnail', ''))):
-            self.thumbnail_label.setPixmap(pixmap.scaled(self.thumbnail_label.size(), Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation))
+        # Load thumbnail
+        thumbnail_url = metadata.get('thumbnail', '')
+        if thumbnail_url:
+            import urllib.request
+            try:
+                data = urllib.request.urlopen(thumbnail_url).read()
+                pixmap = QPixmap()
+                if pixmap.loadFromData(data):
+                    self.thumbnail_label.setPixmap(pixmap.scaled(self.thumbnail_label.size(), Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation))
+            except Exception as e:
+                self.thumbnail_label.setText("No Thumbnail")
         else:
             self.thumbnail_label.setText("No Thumbnail")
         
@@ -343,30 +397,51 @@ class MainWindow(QMainWindow):
         video_id = self.current_metadata['id']
         
         # Check if manual download is needed
-        # VOD_ON_AIR (live rewind) or manual flag overrides yt-dlp
+        # YouTube/Chzzk ABR_HLS: use yt-dlp
+        # Chzzk VOD_ON_AIR (fast replay): manual segment download
+        content_type = self.current_metadata.get('type', 'vod')
+        vod_status    = self.current_metadata.get('vod_status', '')
         use_manual_download = (
-            self.current_metadata.get('vod_status') != 'ABR_HLS' and self.current_metadata.get('type') == 'vod'
+            content_type == 'vod'
+            and vod_status != 'ABR_HLS'
         )
         
-        # Check split download
-        selected_parts = self.part_selector.get_selected_ranges()
+        # Build yt-dlp format_selector for quality selection
+        # Applies to both YouTube and Chzzk ABR_HLS (yt-dlp handles both)
+        format_selector = None
+        height = selected_res.get('height', 0)
+        if content_type == 'youtube' or (content_type == 'vod' and vod_status == 'ABR_HLS'):
+            if height:
+                format_selector = f'bestvideo[height<={height}]+bestaudio/best[height<={height}]'
+            else:
+                format_selector = 'bestvideo+bestaudio/best'
+            # Use page URL (yt-dlp resolves actual stream URL from it)
+            url = self.current_metadata.get('url', url)
+
         
-        if not selected_parts:
+        # Check split download
+        try:
+            time_range = self.time_range_widget.get_time_range()
+        except ValueError as e:
+            QMessageBox.warning(self, "입력 오류", str(e))
+            return
+            
+        if not time_range:
             # Download full video
-            self._initiate_download(video_id, url, title, quality_label, use_manual_download)
+            self._initiate_download(video_id, url, title, quality_label, use_manual_download,
+                                    format_selector=format_selector)
         else:
-            # Download selected parts
-            for i, part in enumerate(selected_parts):
-                part_title = f"{title} (Part {i+1})" # Use i+1 for part number
-                self._initiate_download(
-                    video_id, 
-                    url, 
-                    part_title, 
-                    quality_label, 
-                    use_manual_download,
-                    start_time=part['start'],
-                    end_time=part['end']
-                )
+            # Download selected part
+            part_title = f"{title} ({time_range['start']}초~)"
+            if time_range['end']:
+                part_title = f"{title} ({time_range['start']}초~{time_range['end']}초)"
+            
+            self._initiate_download(
+                video_id, url, part_title, quality_label, use_manual_download,
+                start_time=time_range['start'],
+                end_time=time_range['end'],
+                format_selector=format_selector,
+            )
         
         # Show confirmation
         QMessageBox.information(
@@ -383,27 +458,26 @@ class MainWindow(QMainWindow):
         quality, 
         use_manual, 
         start_time=None, 
-        end_time=None
+        end_time=None,
+        format_selector=None,
     ):
         """Helper to start a single download task"""
-        # Create output directory if not exists
         output_dir = Path(self.download_path)
         output_dir.mkdir(parents=True, exist_ok=True)
         
-        # Get cookies
         cookies = self.config.get_cookies()
         
-        # Start download
         download_id = self.download_manager.start_download(
             video_id=video_id,
             url=url,
             title=title,
             quality=quality,
-            output_dir=str(output_dir), # Pass as string
+            output_dir=str(output_dir),
             cookies=cookies,
             use_manual_download=use_manual,
             start_time=start_time,
-            end_time=end_time
+            end_time=end_time,
+            format_selector=format_selector,
         )
         
         # Create UI item

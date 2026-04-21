@@ -3,7 +3,6 @@
 import sys
 from pathlib import Path
 
-# Add src directory to path
 src_path = str(Path('.').absolute() / 'src')
 
 block_cipher = None
@@ -26,8 +25,10 @@ a = Analysis(
         'ui.download_item',
         'ui.settings_dialog',
         'ui.styles',
+        'ui.time_range_widget',
         'core',
         'core.chzzk_api',
+        'core.youtube_api',
         'core.downloader',
         'core.segment_downloader',
         'core.config',
@@ -81,5 +82,8 @@ app = BUNDLE(
     info_plist={
         'NSPrincipalClass': 'NSApplication',
         'NSHighResolutionCapable': 'True',
+        'CFBundleShortVersionString': '2.0.0',
+        'CFBundleVersion': '2.0.0',
+        'NSRequiresAquaSystemAppearance': 'False',
     },
 )
