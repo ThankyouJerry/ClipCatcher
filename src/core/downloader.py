@@ -11,6 +11,7 @@ from PyQt6.QtCore import QObject, pyqtSignal, QThread
 import yt_dlp
 
 from core.segment_downloader import SegmentDownloader
+from core.ffmpeg_utils import get_ffmpeg_binary
 
 class DownloadWorker(QThread):
     """Worker thread for downloading videos"""
@@ -201,9 +202,14 @@ class DownloadWorker(QThread):
             except Exception:
                 return 0
 
-        # Inject PATH so yt-dlp can find ffmpeg
+        # ffmpeg 경로 확보 (imageio-ffmpeg 번들 우선)
+        ffmpeg_path = get_ffmpeg_binary()
+        ffmpeg_dir  = os.path.dirname(ffmpeg_path)
         env = os.environ.copy()
-        env['PATH'] = f"/opt/homebrew/bin:/usr/local/bin:{env.get('PATH', '')}"
+        env['PATH'] = f"{ffmpeg_dir}:/opt/homebrew/bin:/usr/local/bin:{env.get('PATH', '')}"
+
+        # yt-dlp에 ffmpeg 위치 명시
+        cmd += ["--ffmpeg-location", ffmpeg_path]
 
         proc = subprocess.Popen(
             cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
@@ -258,6 +264,7 @@ class DownloadWorker(QThread):
                 self.cookie_file.close()
             
             fmt = self.format_selector or 'bestvideo+bestaudio/best'
+            ffmpeg_path = get_ffmpeg_binary()
             ydl_opts = {
                 'format': fmt,
                 'outtmpl': self.output_path + '.%(ext)s',
@@ -265,6 +272,7 @@ class DownloadWorker(QThread):
                 'progress_hooks': [self._progress_hook],
                 'quiet': True,
                 'no_warnings': True,
+                'ffmpeg_location': ffmpeg_path,
                 'postprocessors': [{
                     'key': 'FFmpegVideoConvertor',
                     'preferedformat': 'mp4',

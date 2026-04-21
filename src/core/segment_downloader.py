@@ -261,9 +261,9 @@ class SegmentDownloader:
         ffmpeg으로 재먹싱하여 정상적인 progressive MP4로 변환합니다.
         """
         import subprocess
-        import shutil
 
-        ffmpeg_bin = shutil.which("ffmpeg") or "/opt/homebrew/bin/ffmpeg"
+        from core.ffmpeg_utils import get_ffmpeg_binary
+        ffmpeg_bin = get_ffmpeg_binary()
 
         # ── Step 1: 바이트 결합 → 임시 fragmented MP4 ──────────────
         temp_concat = output_path.replace(".mp4", "_raw.mp4")

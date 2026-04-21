@@ -2,8 +2,12 @@
 
 import sys
 from pathlib import Path
+from PyInstaller.utils.hooks import collect_data_files, collect_dynamic_libs
 
 src_path = str(Path('.').absolute() / 'src')
+
+# imageio-ffmpeg 정적 바이너리 수집
+imageio_datas = collect_data_files('imageio_ffmpeg')
 
 block_cipher = None
 
@@ -11,7 +15,7 @@ a = Analysis(
     ['src/main.py'],
     pathex=[src_path],
     binaries=[],
-    datas=[],
+    datas=imageio_datas,
     hiddenimports=[
         'PyQt6.QtCore',
         'PyQt6.QtGui',
@@ -20,6 +24,7 @@ a = Analysis(
         'aiohttp',
         'yt_dlp',
         'urllib.request',
+        'imageio_ffmpeg',
         'ui',
         'ui.main_window',
         'ui.download_item',
@@ -32,6 +37,7 @@ a = Analysis(
         'core.downloader',
         'core.segment_downloader',
         'core.config',
+        'core.ffmpeg_utils',
     ],
     hookspath=[],
     hooksconfig={},
