@@ -2,6 +2,8 @@ name: Build Windows
 
 on:
   push:
+    branches:
+      - main
     tags:
       - 'v*'
   workflow_dispatch:
@@ -21,7 +23,12 @@ jobs:
         with:
           python-version: '3.11'
       
-      - name: Install dependencies
+      - name: Install yt-dlp and ffmpeg
+        run: |
+          winget install --id=yt-dlp.yt-dlp -e --accept-source-agreements --accept-package-agreements || pip install yt-dlp
+          winget install --id=Gyan.FFmpeg -e --accept-source-agreements --accept-package-agreements || choco install ffmpeg -y
+      
+      - name: Install Python dependencies
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
@@ -29,7 +36,7 @@ jobs:
       
       - name: Build with PyInstaller
         run: |
-          pyinstaller build.spec
+          pyinstaller build.spec --clean
       
       - name: List dist contents
         run: |
@@ -44,6 +51,7 @@ jobs:
         with:
           name: ChzzkDownloader-Windows
           path: ChzzkDownloader-Windows.zip
+          retention-days: 30
 
   release:
     needs: [build-windows]
@@ -62,14 +70,35 @@ jobs:
             ChzzkDownloader-Windows.zip
           body: |
             ## 🎥 Chzzk Downloader GUI
-            
-            ### Windows
-            - ChzzkDownloader-Windows.zip (자동 빌드)
-            
-            ### macOS
-            - macOS 버전은 직접 빌드하거나 Python으로 실행하세요.
-            
-            ### Python 실행 (모든 플랫폼)
+
+            치지직(Chzzk) VOD/클립 + YouTube 다운로드 프로그램
+
+            ### ⚠️ 필수 사전 설치
+
+            실행 파일을 사용하기 전에 **yt-dlp**와 **ffmpeg**를 설치해야 합니다.
+
+            **yt-dlp 설치:**
+            ```powershell
+            winget install yt-dlp
+            ```
+            또는 공식 다운로드: https://github.com/yt-dlp/yt-dlp/releases/latest
+
+            **ffmpeg 설치:**
+            ```powershell
+            winget install Gyan.FFmpeg
+            ```
+            또는 공식 다운로드: https://www.gyan.dev/ffmpeg/builds/
+
+            ---
+
+            ### 📥 다운로드
+
+            | 플랫폼 | 파일 |
+            |--------|------|
+            | **Windows** | `ChzzkDownloader-Windows.zip` |
+            | **macOS** | Python으로 실행 또는 로컬 빌드 |
+
+            ### 🚀 실행 방법 (Python — 모든 플랫폼)
             ```bash
             git clone https://github.com/ThankyouJerry/chzzkdownloader-gui.git
             cd chzzkdownloader-gui
