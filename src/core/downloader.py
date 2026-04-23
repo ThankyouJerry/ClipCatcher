@@ -4,10 +4,21 @@ Download Manager using yt-dlp
 import os
 import uuid
 import tempfile
+import shutil
 from pathlib import Path
-from typing import Dict, Optional
+from typing import Dict, Optional, List
 from PyQt6.QtCore import QObject, pyqtSignal, QThread
 import yt_dlp
+
+
+def get_missing_binary_dependencies() -> List[str]:
+    """Return missing external binaries required by yt-dlp merge workflow."""
+    missing = []
+    if shutil.which('ffmpeg') is None:
+        missing.append('ffmpeg')
+    if shutil.which('ffprobe') is None:
+        missing.append('ffprobe')
+    return missing
 
 class DownloadWorker(QThread):
     """Worker thread for downloading videos"""
@@ -30,6 +41,15 @@ class DownloadWorker(QThread):
         actual_output_path = None
         
         try:
+            missing_binaries = get_missing_binary_dependencies()
+            if missing_binaries:
+                missing_text = ", ".join(missing_binaries)
+                self.download_error.emit(
+                    f"필수 도구가 없습니다: {missing_text}\n"
+                    "설정 안내 팝업의 설치 링크/CLI 예시를 확인해주세요."
+                )
+                return
+
             # Create cookie file if cookies provided
             if self.cookies:
                 self.cookie_file = tempfile.NamedTemporaryFile(
@@ -168,6 +188,7 @@ class DownloadManager(QObject):
         # Create worker
         worker = DownloadWorker(url, output_path, cookies)
         self.active_downloads[download_id] = worker
+        worker.finished.connect(lambda did=download_id: self._cleanup_download(did))
         
         # Start download
         worker.start()
@@ -175,16 +196,20 @@ class DownloadManager(QObject):
         return download_id
     
     def cancel_download(self, download_id: str):
-        """Cancel a download"""
+        """Cancel a download without blocking UI."""
         if download_id in self.active_downloads:
             worker = self.active_downloads[download_id]
             worker.stop()
-            worker.wait()  # Wait for thread to finish
             del self.active_downloads[download_id]
     
     def get_worker(self, download_id: str) -> Optional[DownloadWorker]:
         """Get download worker by ID"""
         return self.active_downloads.get(download_id)
+
+    def _cleanup_download(self, download_id: str):
+        """Remove worker from active map when thread finishes."""
+        if download_id in self.active_downloads:
+            del self.active_downloads[download_id]
     
     @staticmethod
     def _sanitize_filename(filename: str) -> str:

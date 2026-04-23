@@ -34,13 +34,13 @@ jobs:
       
       - name: Create ZIP archive
         run: |
-          Compress-Archive -Path dist\ChzzkDownloader\* -DestinationPath ChzzkDownloader-Windows.zip
+          Compress-Archive -Path dist\ClipCatcher\* -DestinationPath ClipCatcher-Windows.zip
       
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: ChzzkDownloader-Windows
-          path: ChzzkDownloader-Windows.zip
+          name: ClipCatcher-Windows
+          path: ClipCatcher-Windows.zip
 
   build-macos:
     runs-on: macos-latest
@@ -70,13 +70,13 @@ jobs:
       - name: Create ZIP (skip DMG for now)
         run: |
           cd dist
-          zip -r ../ChzzkDownloader-macOS.zip ChzzkDownloader.app
+          zip -r ../ClipCatcher-macOS.zip ClipCatcher.app
       
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: ChzzkDownloader-macOS
-          path: ChzzkDownloader-macOS.zip
+          name: ClipCatcher-macOS
+          path: ClipCatcher-macOS.zip
 
   release:
     needs: [build-windows, build-macos]
@@ -86,19 +86,19 @@ jobs:
       - name: Download Windows artifact
         uses: actions/download-artifact@v4
         with:
-          name: ChzzkDownloader-Windows
+          name: ClipCatcher-Windows
       
       - name: Download macOS artifact
         uses: actions/download-artifact@v4
         with:
-          name: ChzzkDownloader-macOS
+          name: ClipCatcher-macOS
       
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            ChzzkDownloader-Windows.zip
-            ChzzkDownloader-macOS.zip
+            ClipCatcher-Windows.zip
+            ClipCatcher-macOS.zip
           draft: false
           prerelease: false
         env:

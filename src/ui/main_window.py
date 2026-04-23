@@ -1,25 +1,26 @@
 """
-Main Window for Chzzk Downloader
+Main Window for ClipCatcher
 """
-import asyncio
-import sys
 import subprocess
 import platform
 import os
+import shutil
+import importlib.util
+from typing import List
 from PyQt6.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QLabel, QLineEdit, QPushButton, QComboBox,
-    QListWidget, QListWidgetItem, QMessageBox, QMenuBar,
+    QListWidget, QListWidgetItem, QMessageBox,
     QGroupBox, QSizePolicy
 )
-from PyQt6.QtCore import Qt, QSize
-from PyQt6.QtGui import QAction, QPixmap
+from PyQt6.QtCore import Qt
+from PyQt6.QtGui import QAction
 from qasync import asyncSlot
 
 from ui.download_item import DownloadItemWidget
 from ui.settings_dialog import SettingsDialog
 from core.chzzk_api import ChzzkAPI
-from core.downloader import DownloadManager
+from core.downloader import DownloadManager, get_missing_binary_dependencies
 from core.config import Config
 
 
@@ -34,11 +35,12 @@ class MainWindow(QMainWindow):
         self.current_metadata = None
         self.download_widgets = {}  # download_id -> widget
         
-        self.setWindowTitle("Chzzk Downloader")
+        self.setWindowTitle("ClipCatcher")
         self.setMinimumSize(900, 700)
         
         self._init_ui()
         self._create_menu_bar()
+        self._check_runtime_dependencies()
     
     def _init_ui(self):
         """Initialize the user interface"""
@@ -52,7 +54,7 @@ class MainWindow(QMainWindow):
         main_layout.setContentsMargins(20, 20, 20, 20)
         
         # Header
-        header_label = QLabel("🎥 Chzzk Downloader")
+        header_label = QLabel("🎥 ClipCatcher")
         header_label.setStyleSheet("""
             QLabel {
                 font-size: 24px;
@@ -230,13 +232,17 @@ class MainWindow(QMainWindow):
         # Populate quality combo
         self.quality_combo.clear()
         for res in metadata['resolutions']:
-            self.quality_combo.addItem(
-                f"{res['label']} ({res.get('bitrate', 0) // 1000} kbps)",
-                res
-            )
+            bitrate = res.get('bitrate', 0)
+            label = res['label']
+            if bitrate and bitrate > 0:
+                label = f"{label} ({bitrate // 1000} kbps)"
+            self.quality_combo.addItem(label, res)
     
     def _start_download(self):
         """Start downloading the video"""
+        if not self._check_runtime_dependencies():
+            return
+
         if not self.current_metadata:
             return
         
@@ -327,9 +333,43 @@ class MainWindow(QMainWindow):
         """Show about dialog"""
         QMessageBox.about(
             self,
-            "Chzzk Downloader 정보",
-            "<h3>Chzzk Downloader</h3>"
+            "ClipCatcher 정보",
+            "<h3>ClipCatcher</h3>"
             "<p>네이버 치지직 VOD 및 클립 다운로더</p>"
             "<p>Version 1.0.0</p>"
             "<p>PyQt6 기반 데스크톱 애플리케이션</p>"
         )
+
+    def _check_runtime_dependencies(self) -> bool:
+        """Check runtime dependencies and show installation guide popup if missing."""
+        missing = get_missing_binary_dependencies()
+
+        yt_dlp_module_installed = importlib.util.find_spec("yt_dlp") is not None
+        yt_dlp_cli_installed = shutil.which("yt-dlp") is not None
+        if not yt_dlp_module_installed and not yt_dlp_cli_installed:
+            missing.append("yt-dlp")
+
+        if missing:
+            self._show_dependency_install_popup(missing)
+            return False
+        return True
+
+    def _show_dependency_install_popup(self, missing: List[str]):
+        """Show a single popup containing install links and CLI fallback guidance."""
+        missing_text = ", ".join(missing)
+        message = QMessageBox(self)
+        message.setIcon(QMessageBox.Icon.Warning)
+        message.setWindowTitle("필수 도구 설치 필요")
+        message.setTextFormat(Qt.TextFormat.RichText)
+        message.setText(
+            f"<b>필수 도구가 없습니다:</b> {missing_text}<br><br>"
+            "아래 가이드를 따라 설치한 뒤 앱을 다시 실행하거나 다시 시도해주세요.<br><br>"
+            "<b>1. 다운로드 링크</b><br>"
+            '- ffmpeg: <a href="https://ffmpeg.org/download.html">https://ffmpeg.org/download.html</a><br>'
+            '- yt-dlp: <a href="https://github.com/yt-dlp/yt-dlp/releases/latest">https://github.com/yt-dlp/yt-dlp/releases/latest</a><br><br>'
+            "<b>2. CLI 설치 예시</b><br>"
+            "- macOS(Homebrew): <code>brew install ffmpeg yt-dlp</code><br>"
+            "- Python 환경(yt-dlp): <code>python -m pip install -U yt-dlp</code><br>"
+            "- Windows(winget 예시): <code>winget install yt-dlp.yt-dlp</code>"
+        )
+        message.exec()

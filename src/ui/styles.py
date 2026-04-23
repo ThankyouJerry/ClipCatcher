@@ -1,5 +1,5 @@
 """
-Modern UI Styles for Chzzk Downloader
+Modern UI Styles for ClipCatcher
 """
 
 # Color palette
