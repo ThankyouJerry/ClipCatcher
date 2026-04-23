@@ -344,7 +344,12 @@ class MainWindow(QMainWindow):
         """Check runtime dependencies and show installation guide popup if missing."""
         missing = get_missing_binary_dependencies()
 
-        yt_dlp_module_installed = importlib.util.find_spec("yt_dlp") is not None
+        try:
+            import yt_dlp  # noqa: F401
+            yt_dlp_module_installed = True
+        except Exception:
+            yt_dlp_module_installed = False
+
         yt_dlp_cli_installed = shutil.which("yt-dlp") is not None
         if not yt_dlp_module_installed and not yt_dlp_cli_installed:
             missing.append("yt-dlp")
