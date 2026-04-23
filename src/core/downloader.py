@@ -11,13 +11,70 @@ from PyQt6.QtCore import QObject, pyqtSignal, QThread
 import yt_dlp
 
 
+def _candidate_bin_dirs() -> List[str]:
+    """Return candidate binary directories for app and shell launches."""
+    dirs = []
+
+    # Keep current PATH first.
+    for entry in os.environ.get("PATH", "").split(os.pathsep):
+        if entry:
+            dirs.append(entry)
+
+    # Common macOS and Unix binary locations.
+    dirs.extend([
+        "/opt/homebrew/bin",
+        "/usr/local/bin",
+        "/opt/local/bin",
+        "/usr/bin",
+        "/bin",
+        "/usr/sbin",
+        "/sbin",
+    ])
+
+    # Deduplicate while preserving order.
+    seen = set()
+    unique = []
+    for entry in dirs:
+        if entry not in seen:
+            seen.add(entry)
+            unique.append(entry)
+    return unique
+
+
+def resolve_binary(binary_name: str) -> Optional[str]:
+    """Resolve binary path from PATH and known fallback locations."""
+    direct = shutil.which(binary_name)
+    if direct:
+        return direct
+
+    for bin_dir in _candidate_bin_dirs():
+        candidate = Path(bin_dir) / binary_name
+        if candidate.exists() and os.access(candidate, os.X_OK):
+            return str(candidate)
+    return None
+
+
+def get_binary_paths() -> Dict[str, str]:
+    """Return resolved binary paths for required external tools."""
+    binaries = {}
+    ffmpeg_path = resolve_binary("ffmpeg")
+    ffprobe_path = resolve_binary("ffprobe")
+
+    if ffmpeg_path:
+        binaries["ffmpeg"] = ffmpeg_path
+    if ffprobe_path:
+        binaries["ffprobe"] = ffprobe_path
+    return binaries
+
+
 def get_missing_binary_dependencies() -> List[str]:
     """Return missing external binaries required by yt-dlp merge workflow."""
+    resolved = get_binary_paths()
     missing = []
-    if shutil.which('ffmpeg') is None:
-        missing.append('ffmpeg')
-    if shutil.which('ffprobe') is None:
-        missing.append('ffprobe')
+    if "ffmpeg" not in resolved:
+        missing.append("ffmpeg")
+    if "ffprobe" not in resolved:
+        missing.append("ffprobe")
     return missing
 
 class DownloadWorker(QThread):
@@ -41,7 +98,13 @@ class DownloadWorker(QThread):
         actual_output_path = None
         
         try:
-            missing_binaries = get_missing_binary_dependencies()
+            binary_paths = get_binary_paths()
+            missing_binaries = []
+            if "ffmpeg" not in binary_paths:
+                missing_binaries.append("ffmpeg")
+            if "ffprobe" not in binary_paths:
+                missing_binaries.append("ffprobe")
+
             if missing_binaries:
                 missing_text = ", ".join(missing_binaries)
                 self.download_error.emit(
@@ -72,6 +135,15 @@ class DownloadWorker(QThread):
                     'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36',
                 }
             }
+
+            # Ensure yt-dlp can invoke ffmpeg/ffprobe even when app PATH is restricted.
+            ffmpeg_path = binary_paths.get("ffmpeg")
+            ffmpeg_dir = str(Path(ffmpeg_path).parent) if ffmpeg_path else ""
+            if ffmpeg_dir:
+                ydl_opts['ffmpeg_location'] = ffmpeg_dir
+                existing_path = os.environ.get("PATH", "")
+                if ffmpeg_dir not in existing_path.split(os.pathsep):
+                    os.environ["PATH"] = ffmpeg_dir + os.pathsep + existing_path
             
             if self.cookie_file:
                 ydl_opts['cookiefile'] = self.cookie_file.name
