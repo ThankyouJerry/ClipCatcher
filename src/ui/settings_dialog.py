@@ -4,7 +4,7 @@ Settings Dialog
 from PyQt6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel, 
     QLineEdit, QPushButton, QFileDialog, QTabWidget,
-    QWidget, QGroupBox
+    QWidget, QGroupBox, QSpinBox
 )
 from PyQt6.QtCore import Qt
 from pathlib import Path
@@ -79,6 +79,24 @@ class SettingsDialog(QDialog):
         path_layout.addLayout(path_input_layout)
         path_group.setLayout(path_layout)
         layout.addWidget(path_group)
+
+        queue_group = QGroupBox("다운로드 동시 작업 수")
+        queue_layout = QVBoxLayout()
+        queue_hint = QLabel("기본값 1은 순차 다운로드입니다. 2 이상으로 올리면 병렬 다운로드됩니다.")
+        queue_hint.setWordWrap(True)
+        queue_hint.setObjectName("subtitleLabel")
+        queue_layout.addWidget(queue_hint)
+
+        queue_input_layout = QHBoxLayout()
+        self.concurrent_spin = QSpinBox()
+        self.concurrent_spin.setMinimum(1)
+        self.concurrent_spin.setMaximum(5)
+        self.concurrent_spin.setSingleStep(1)
+        queue_input_layout.addWidget(self.concurrent_spin)
+        queue_input_layout.addStretch()
+        queue_layout.addLayout(queue_input_layout)
+        queue_group.setLayout(queue_layout)
+        layout.addWidget(queue_group)
         
         layout.addStretch()
         widget.setLayout(layout)
@@ -139,6 +157,7 @@ class SettingsDialog(QDialog):
     def _load_settings(self):
         """Load current settings into UI"""
         self.path_input.setText(self.config.get("download_path", ""))
+        self.concurrent_spin.setValue(max(1, int(self.config.get("concurrent_downloads", 1))))
         
         cookies = self.config.get("cookies", {})
         self.nid_aut_input.setText(cookies.get("NID_AUT", ""))
@@ -148,6 +167,7 @@ class SettingsDialog(QDialog):
         """Save settings and close dialog"""
         # Update config
         self.config.set("download_path", self.path_input.text())
+        self.config.set("concurrent_downloads", int(self.concurrent_spin.value()))
         self.config.set("cookies", {
             "NID_AUT": self.nid_aut_input.text().strip(),
             "NID_SES": self.nid_ses_input.text().strip()

@@ -2,17 +2,16 @@
 Main Window for ClipCatcher
 """
 import asyncio
-import sys
 import subprocess
 import platform
 import os
 from pathlib import Path
-from PyQt6.QtCore import Qt, QSize, QTimer
+from PyQt6.QtCore import Qt, QTimer
 from PyQt6.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QLabel, QLineEdit, QPushButton, QComboBox,
-    QListWidget, QListWidgetItem, QMessageBox, QMenuBar,
-    QGroupBox, QSizePolicy, QFileDialog, QScrollArea
+    QListWidget, QListWidgetItem, QMessageBox,
+    QGroupBox, QSizePolicy, QTabWidget
 )
 from PyQt6.QtGui import QAction, QPixmap
 from qasync import asyncSlot
@@ -37,7 +36,10 @@ class MainWindow(QMainWindow):
         self.youtube_api = YouTubeAPI()
         self.download_manager = DownloadManager()
         self.current_metadata = None
-        self.download_widgets = {}  # download_id -> widget
+        self.download_widgets = {}  # download_id -> {item, widget, bucket}
+        self.pending_download_ids = []
+        self.running_download_ids = set()
+        self.max_concurrent_downloads = max(1, int(self.config.get("concurrent_downloads", 1)))
         
         # Load download path from config or default
         default_path = os.path.join(os.getcwd(), "downloads")
@@ -58,9 +60,12 @@ class MainWindow(QMainWindow):
         central_widget = QWidget()
         self.setCentralWidget(central_widget)
         
-        main_layout = QVBoxLayout()
+        main_layout = QHBoxLayout()
         main_layout.setSpacing(14)
         main_layout.setContentsMargins(24, 16, 24, 16)
+
+        left_layout = QVBoxLayout()
+        left_layout.setSpacing(14)
         
         # Header
         header_label = QLabel("🎬 ClipCatcher")
@@ -72,26 +77,27 @@ class MainWindow(QMainWindow):
                 padding: 6px 0;
             }
         """)
-        main_layout.addWidget(header_label)
+        left_layout.addWidget(header_label)
         
         # URL Input Section
         url_group = self._create_url_input_section()
-        main_layout.addWidget(url_group)
+        left_layout.addWidget(url_group)
         
         # Video Info Section (hidden until URL fetched)
         self.info_group = self._create_video_info_section()
         self.info_group.setVisible(False)
-        main_layout.addWidget(self.info_group)
+        left_layout.addWidget(self.info_group)
         
         # Time Range Widget (independent section, hidden until URL fetched)
         self.time_range_widget = TimeRangeWidget()
         self.time_range_widget.setVisible(False)
-        main_layout.addWidget(self.time_range_widget)
-        
-        # Download Queue Section (stretches to fill remaining space)
-        queue_group = self._create_download_queue_section()
-        main_layout.addWidget(queue_group, stretch=1)
-        
+        left_layout.addWidget(self.time_range_widget)
+        left_layout.addStretch()
+
+        main_layout.addLayout(left_layout, stretch=3)
+        download_center = self._create_download_center_section()
+        main_layout.addWidget(download_center, stretch=2)
+
         central_widget.setLayout(main_layout)
     
     def _create_url_input_section(self) -> QGroupBox:
@@ -208,22 +214,40 @@ class MainWindow(QMainWindow):
         group.setLayout(layout)
         return group
     
-    def _create_download_queue_section(self) -> QGroupBox:
-        """Create download queue section"""
-        group = QGroupBox("다운로드 목록")
+    def _create_download_center_section(self) -> QGroupBox:
+        """Create right-side download center with tab views."""
+        group = QGroupBox("다운로드 센터")
         layout = QVBoxLayout()
+        layout.setSpacing(8)
 
-        self.download_list = QListWidget()
-        self.download_list.setSpacing(8)
-        self.download_list.setVerticalScrollBarPolicy(
-            Qt.ScrollBarPolicy.ScrollBarAsNeeded
-        )
-        self.download_list.setHorizontalScrollBarPolicy(
-            Qt.ScrollBarPolicy.ScrollBarAlwaysOff
-        )
-        layout.addWidget(self.download_list)
+        self.download_center_label = QLabel()
+        self.download_center_label.setObjectName("subtitleLabel")
+        layout.addWidget(self.download_center_label)
+
+        self.download_tabs = QTabWidget()
+
+        self.active_list = QListWidget()
+        self.active_list.setSpacing(8)
+        self.active_list.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        self.active_list.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+
+        self.completed_list = QListWidget()
+        self.completed_list.setSpacing(8)
+        self.completed_list.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        self.completed_list.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+
+        self.failed_list = QListWidget()
+        self.failed_list.setSpacing(8)
+        self.failed_list.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        self.failed_list.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+
+        self.download_tabs.addTab(self.active_list, "진행중")
+        self.download_tabs.addTab(self.completed_list, "완료")
+        self.download_tabs.addTab(self.failed_list, "실패")
+        layout.addWidget(self.download_tabs, stretch=1)
 
         group.setLayout(layout)
+        self._refresh_download_center()
         return group
     
     def _create_menu_bar(self):
@@ -483,7 +507,8 @@ class MainWindow(QMainWindow):
         output_dir = Path(self.download_path) / today
         output_dir.mkdir(parents=True, exist_ok=True)
         
-        cookies = self.config.get_cookies()
+        cookies_header = self.config.get_cookie_header()
+        cookies_netscape = self.config.get_cookies_netscape()
         
         download_id = self.download_manager.start_download(
             video_id=video_id,
@@ -491,7 +516,8 @@ class MainWindow(QMainWindow):
             title=title,
             quality=quality,
             output_dir=str(output_dir),
-            cookies=cookies,
+            cookies_header=cookies_header,
+            cookies_netscape=cookies_netscape,
             use_manual_download=use_manual,
             start_time=start_time,
             end_time=end_time,
@@ -512,31 +538,135 @@ class MainWindow(QMainWindow):
             worker.status_changed.connect(widget.update_status)
             worker.download_completed.connect(widget.set_completed)
             worker.download_error.connect(widget.set_error)
-            
-            # Start download
-            worker.start()
+            worker.download_completed.connect(
+                lambda output_path, did=download_id: self._on_download_completed(did, output_path)
+            )
+            worker.download_error.connect(
+                lambda error_message, did=download_id: self._on_download_failed(did, error_message)
+            )
         
         widget.cancel_requested.connect(self._cancel_download)
         widget.open_file_requested.connect(self._open_file)
         
-        # Add to list
-        item = QListWidgetItem(self.download_list)
+        # Add to active tab first (queued / running state)
+        item = QListWidgetItem(self.active_list)
         item.setSizeHint(widget.sizeHint())
-        self.download_list.addItem(item)
-        self.download_list.setItemWidget(item, widget)
-        
-        self.download_widgets[download_id] = (item, widget)
+        self.active_list.addItem(item)
+        self.active_list.setItemWidget(item, widget)
+
+        self.download_widgets[download_id] = {
+            "item": item,
+            "widget": widget,
+            "bucket": "active",
+        }
+        self.pending_download_ids.append(download_id)
+        widget.update_status("대기열에 추가됨")
+        self._refresh_download_center()
+        self._pump_download_queue()
         
     def _cancel_download(self, download_id: str):
         """Cancel a download"""
-        self.download_manager.cancel_download(download_id)
-        
-        # Remove from list
-        if download_id in self.download_widgets:
-            item, widget = self.download_widgets[download_id]
-            row = self.download_list.row(item)
-            self.download_list.takeItem(row)
-            del self.download_widgets[download_id]
+        if download_id in self.pending_download_ids:
+            self.pending_download_ids.remove(download_id)
+
+        if download_id in self.running_download_ids:
+            self.running_download_ids.remove(download_id)
+            self.download_manager.cancel_download(download_id)
+        else:
+            self.download_manager.remove_download(download_id)
+
+        self._remove_download_widget(download_id)
+        self._refresh_download_center()
+        self._pump_download_queue()
+
+    def _pump_download_queue(self):
+        """Start queued downloads up to concurrent limit."""
+        while self.pending_download_ids and len(self.running_download_ids) < self.max_concurrent_downloads:
+            download_id = self.pending_download_ids.pop(0)
+            worker = self.download_manager.get_worker(download_id)
+            if not worker or download_id not in self.download_widgets:
+                continue
+            self.running_download_ids.add(download_id)
+            widget = self.download_widgets[download_id]["widget"]
+            widget.update_status("다운로드 시작 중...")
+            worker.start()
+        self._refresh_download_center()
+
+    def _on_download_completed(self, download_id: str, _output_path: str):
+        """Handle completion: cleanup, move tab, then schedule next."""
+        if download_id in self.running_download_ids:
+            self.running_download_ids.remove(download_id)
+        self.download_manager.remove_download(download_id)
+        self._move_download_widget(download_id, "completed")
+        self._refresh_download_center()
+        self._pump_download_queue()
+
+    def _on_download_failed(self, download_id: str, _error_message: str):
+        """Handle failure: cleanup, move tab, then schedule next."""
+        if download_id in self.running_download_ids:
+            self.running_download_ids.remove(download_id)
+        self.download_manager.remove_download(download_id)
+        self._move_download_widget(download_id, "failed")
+        self._refresh_download_center()
+        self._pump_download_queue()
+
+    def _move_download_widget(self, download_id: str, target_bucket: str):
+        """Move a download item widget between tab lists."""
+        if download_id not in self.download_widgets:
+            return
+        entry = self.download_widgets[download_id]
+        old_list = self._list_by_bucket(entry["bucket"])
+        new_list = self._list_by_bucket(target_bucket)
+        if old_list is None or new_list is None:
+            return
+
+        old_item = entry["item"]
+        old_row = old_list.row(old_item)
+        if old_row >= 0:
+            old_list.takeItem(old_row)
+
+        new_item = QListWidgetItem(new_list)
+        new_item.setSizeHint(entry["widget"].sizeHint())
+        new_list.addItem(new_item)
+        new_list.setItemWidget(new_item, entry["widget"])
+        entry["item"] = new_item
+        entry["bucket"] = target_bucket
+
+    def _remove_download_widget(self, download_id: str):
+        """Remove download widget row from current tab list."""
+        if download_id not in self.download_widgets:
+            return
+        entry = self.download_widgets[download_id]
+        list_widget = self._list_by_bucket(entry["bucket"])
+        if list_widget is not None:
+            row = list_widget.row(entry["item"])
+            if row >= 0:
+                list_widget.takeItem(row)
+        del self.download_widgets[download_id]
+
+    def _list_by_bucket(self, bucket: str):
+        if bucket == "active":
+            return self.active_list
+        if bucket == "completed":
+            return self.completed_list
+        if bucket == "failed":
+            return self.failed_list
+        return None
+
+    def _refresh_download_center(self):
+        """Refresh center label and tab titles."""
+        active_count = self.active_list.count()
+        completed_count = self.completed_list.count()
+        failed_count = self.failed_list.count()
+        queued_count = len(self.pending_download_ids)
+        running_count = len(self.running_download_ids)
+
+        self.download_center_label.setText(
+            f"실행 {running_count}/{self.max_concurrent_downloads} | 대기 {queued_count} | 전체 {active_count + completed_count + failed_count}"
+        )
+        self.download_tabs.setTabText(0, f"진행중 ({active_count})")
+        self.download_tabs.setTabText(1, f"완료 ({completed_count})")
+        self.download_tabs.setTabText(2, f"실패 ({failed_count})")
     
     def _open_file(self, file_path: str):
         """Open downloaded file"""
@@ -553,7 +683,17 @@ class MainWindow(QMainWindow):
     def _open_settings(self):
         """Open settings dialog"""
         dialog = SettingsDialog(self.config, self)
-        dialog.exec()
+        if dialog.exec():
+            self.download_path = self.config.get(
+                "download_path",
+                os.path.join(os.getcwd(), "downloads")
+            )
+            self.max_concurrent_downloads = max(
+                1, int(self.config.get("concurrent_downloads", 1))
+            )
+            os.makedirs(self.download_path, exist_ok=True)
+            self._refresh_download_center()
+            self._pump_download_queue()
     
     def _show_about(self):
         """Show about dialog"""
