@@ -26,7 +26,8 @@ class DownloadWorker(QThread):
         self, 
         url: str, 
         output_path: str, 
-        cookies: str = "",
+        cookies_header: str = "",
+        cookies_netscape: str = "",
         use_manual_download: bool = False,
         video_id: Optional[str] = None,
         quality: Optional[str] = None,
@@ -37,7 +38,8 @@ class DownloadWorker(QThread):
         super().__init__()
         self.url = url
         self.output_path = output_path
-        self.cookies = cookies
+        self.cookies_header = cookies_header
+        self.cookies_netscape = cookies_netscape
         self.use_manual_download = use_manual_download
         self.video_id = video_id
         self.quality = quality
@@ -73,7 +75,7 @@ class DownloadWorker(QThread):
             try:
                 # Get fresh metadata with valid m3u8 URL
                 fresh_metadata = loop.run_until_complete(
-                    api.fetch_vod_metadata(self.video_id, self.cookies)
+                    api.fetch_vod_metadata(self.video_id, self.cookies_header)
                 )
                 
                 # Extract Master Playlist URL first
@@ -100,12 +102,7 @@ class DownloadWorker(QThread):
                 self.status_changed.emit(f"다운로드 중... ({current}/{total} 세그먼트)")
             
             # Parse cookies
-            cookies_dict = {}
-            if self.cookies:
-                for cookie in self.cookies.split(';'):
-                    if '=' in cookie:
-                        key, value = cookie.strip().split('=', 1)
-                        cookies_dict[key] = value
+            cookies_dict = self._parse_cookie_header(self.cookies_header)
             
             # Use same headers as yt-dlp
             headers = {
@@ -303,13 +300,13 @@ class DownloadWorker(QThread):
         
         try:
             # Create cookie file if cookies provided
-            if self.cookies:
+            if self.cookies_netscape:
                 self.cookie_file = tempfile.NamedTemporaryFile(
                     mode='w', 
                     suffix='.txt', 
                     delete=False
                 )
-                self.cookie_file.write(self.cookies)
+                self.cookie_file.write(self.cookies_netscape)
                 self.cookie_file.close()
             
             fmt = self.format_selector or 'bestvideo+bestaudio/best'
@@ -406,6 +403,17 @@ class DownloadWorker(QThread):
         """Stop the download"""
         self.should_stop = True
 
+    @staticmethod
+    def _parse_cookie_header(cookie_header: str) -> Dict[str, str]:
+        cookies_dict: Dict[str, str] = {}
+        if not cookie_header:
+            return cookies_dict
+        for cookie in cookie_header.split(';'):
+            if '=' in cookie:
+                key, value = cookie.strip().split('=', 1)
+                cookies_dict[key.strip()] = value.strip()
+        return cookies_dict
+
 
 class DownloadManager(QObject):
     """Manages multiple downloads"""
@@ -421,7 +429,8 @@ class DownloadManager(QObject):
         title: str,
         quality: str,
         output_dir: Path,
-        cookies: str = "",
+        cookies_header: str = "",
+        cookies_netscape: str = "",
         use_manual_download: bool = False,
         start_time: Optional[float] = None,
         end_time: Optional[float] = None,
@@ -436,7 +445,8 @@ class DownloadManager(QObject):
             title: Video title
             quality: Quality label (e.g., "1080p", "720p")
             output_dir: Output directory
-            cookies: Cookie string
+            cookies_header: Cookie header string (e.g. NID_AUT=...; NID_SES=...)
+            cookies_netscape: Netscape cookie file content
             use_manual_download: Whether to use manual segment download
             start_time: Start time in seconds
             end_time: End time in seconds
@@ -457,7 +467,8 @@ class DownloadManager(QObject):
         worker = DownloadWorker(
             url, 
             output_path, 
-            cookies, 
+            cookies_header=cookies_header,
+            cookies_netscape=cookies_netscape,
             use_manual_download=use_manual_download,
             video_id=video_id,
             quality=quality,
@@ -483,6 +494,11 @@ class DownloadManager(QObject):
     def get_worker(self, download_id: str) -> Optional[DownloadWorker]:
         """Get download worker by ID"""
         return self.active_downloads.get(download_id)
+
+    def remove_download(self, download_id: str):
+        """Remove worker reference after completion/error/cancel."""
+        if download_id in self.active_downloads:
+            del self.active_downloads[download_id]
     
     @staticmethod
     def _sanitize_filename(filename: str) -> str:

@@ -15,7 +15,7 @@ class Config:
             "NID_SES": ""
         },
         "default_quality": "1080p",
-        "concurrent_downloads": 3,
+        "concurrent_downloads": 1,
         "theme": "dark"
     }
     
@@ -85,19 +85,33 @@ class Config:
         path.mkdir(parents=True, exist_ok=True)
         return path
     
-    def get_cookies(self) -> str:
-        """Get cookies in Netscape format for yt-dlp"""
+    def get_cookie_header(self) -> str:
+        """Get cookies as HTTP Cookie header format."""
         cookies = self.config.get("cookies", {})
         nid_aut = cookies.get("NID_AUT", "")
         nid_ses = cookies.get("NID_SES", "")
         
         if not nid_aut or not nid_ses:
             return ""
-        
-        # Create Netscape cookie format
+
+        return f"NID_AUT={nid_aut}; NID_SES={nid_ses}"
+
+    def get_cookies_netscape(self) -> str:
+        """Get cookies in Netscape format for yt-dlp cookiefile."""
+        cookies = self.config.get("cookies", {})
+        nid_aut = cookies.get("NID_AUT", "")
+        nid_ses = cookies.get("NID_SES", "")
+
+        if not nid_aut or not nid_ses:
+            return ""
+
         cookie_lines = [
             "# Netscape HTTP Cookie File",
             ".naver.com\tTRUE\t/\tTRUE\t0\tNID_AUT\t" + nid_aut,
             ".naver.com\tTRUE\t/\tTRUE\t0\tNID_SES\t" + nid_ses
         ]
         return "\n".join(cookie_lines)
+
+    def get_cookies(self) -> str:
+        """Backward-compatible alias for cookie header format."""
+        return self.get_cookie_header()
