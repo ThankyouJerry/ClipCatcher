@@ -1,81 +1,18 @@
 """
-Download Manager using yt-dlp
+Download Manager with automatic method selection
 """
 import os
 import uuid
 import tempfile
-import shutil
+import asyncio
 from pathlib import Path
-from typing import Dict, Optional, List
+from typing import Dict, Optional
 from PyQt6.QtCore import QObject, pyqtSignal, QThread
 import yt_dlp
 
-
-def _candidate_bin_dirs() -> List[str]:
-    """Return candidate binary directories for app and shell launches."""
-    dirs = []
-
-    # Keep current PATH first.
-    for entry in os.environ.get("PATH", "").split(os.pathsep):
-        if entry:
-            dirs.append(entry)
-
-    # Common macOS and Unix binary locations.
-    dirs.extend([
-        "/opt/homebrew/bin",
-        "/usr/local/bin",
-        "/opt/local/bin",
-        "/usr/bin",
-        "/bin",
-        "/usr/sbin",
-        "/sbin",
-    ])
-
-    # Deduplicate while preserving order.
-    seen = set()
-    unique = []
-    for entry in dirs:
-        if entry not in seen:
-            seen.add(entry)
-            unique.append(entry)
-    return unique
-
-
-def resolve_binary(binary_name: str) -> Optional[str]:
-    """Resolve binary path from PATH and known fallback locations."""
-    direct = shutil.which(binary_name)
-    if direct:
-        return direct
-
-    for bin_dir in _candidate_bin_dirs():
-        candidate = Path(bin_dir) / binary_name
-        if candidate.exists() and os.access(candidate, os.X_OK):
-            return str(candidate)
-    return None
-
-
-def get_binary_paths() -> Dict[str, str]:
-    """Return resolved binary paths for required external tools."""
-    binaries = {}
-    ffmpeg_path = resolve_binary("ffmpeg")
-    ffprobe_path = resolve_binary("ffprobe")
-
-    if ffmpeg_path:
-        binaries["ffmpeg"] = ffmpeg_path
-    if ffprobe_path:
-        binaries["ffprobe"] = ffprobe_path
-    return binaries
-
-
-def get_missing_binary_dependencies() -> List[str]:
-    """Return missing external binaries required by yt-dlp merge workflow."""
-    resolved = get_binary_paths()
-    missing = []
-    if "ffmpeg" not in resolved:
-        missing.append("ffmpeg")
-    if "ffprobe" not in resolved:
-        missing.append("ffprobe")
-    return missing
+from core.dependency_check import resolve_yt_dlp_binary
+from core.segment_downloader import SegmentDownloader
+from core.ffmpeg_utils import get_ffmpeg_binary
 
 class DownloadWorker(QThread):
     """Worker thread for downloading videos"""
@@ -85,34 +22,286 @@ class DownloadWorker(QThread):
     download_completed = pyqtSignal(str)  # output_path
     download_error = pyqtSignal(str)  # error_message
     
-    def __init__(self, url: str, output_path: str, cookies: str = ""):
+    def __init__(
+        self, 
+        url: str, 
+        output_path: str, 
+        cookies: str = "",
+        use_manual_download: bool = False,
+        video_id: Optional[str] = None,
+        quality: Optional[str] = None,
+        start_time: Optional[float] = None,
+        end_time: Optional[float] = None,
+        format_selector: Optional[str] = None,  # yt-dlp format selector (YouTube quality)
+    ):
         super().__init__()
         self.url = url
         self.output_path = output_path
         self.cookies = cookies
+        self.use_manual_download = use_manual_download
+        self.video_id = video_id
+        self.quality = quality
+        self.start_time = start_time
+        self.end_time = end_time
+        self.format_selector = format_selector
         self.should_stop = False
         self.cookie_file = None
     
     def run(self):
         """Run the download"""
+        try:
+            if self.use_manual_download:
+                self._run_manual_download()
+            else:
+                self._run_ytdlp_download()
+        except Exception as e:
+            self.download_error.emit(str(e))
+    
+    def _run_manual_download(self):
+        """Run manual segment download"""
+        try:
+            self.status_changed.emit("수동 다운로드 시작 중...")
+            
+            # Create event loop for async operations
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            
+            # Fetch fresh m3u8 URL (signatures expire quickly)
+            from core.chzzk_api import ChzzkAPI
+            api = ChzzkAPI()
+            
+            try:
+                # Get fresh metadata with valid m3u8 URL
+                fresh_metadata = loop.run_until_complete(
+                    api.fetch_vod_metadata(self.video_id, self.cookies)
+                )
+                
+                # Extract Master Playlist URL first
+                m3u8_url = api.get_master_playlist_url(fresh_metadata)
+                
+                # Fallback to direct media URL if master not available
+                if not m3u8_url:
+                    m3u8_url = api.get_m3u8_url(fresh_metadata, self.quality)
+                
+                if not m3u8_url:
+                    raise Exception("Failed to extract m3u8 URL from metadata")
+                    
+            except Exception as e:
+                raise Exception(f"Failed to fetch fresh m3u8 URL: {str(e)}")
+            
+            downloader = SegmentDownloader()
+            
+            def progress_callback(current, total):
+                if self.should_stop:
+                    raise Exception("Download cancelled by user")
+                
+                progress = int((current / total) * 100) if total > 0 else 0
+                self.progress_updated.emit(progress, 0, 0)
+                self.status_changed.emit(f"다운로드 중... ({current}/{total} 세그먼트)")
+            
+            # Parse cookies
+            cookies_dict = {}
+            if self.cookies:
+                for cookie in self.cookies.split(';'):
+                    if '=' in cookie:
+                        key, value = cookie.strip().split('=', 1)
+                        cookies_dict[key] = value
+            
+            # Use same headers as yt-dlp
+            headers = {
+                'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                'Referer': 'https://chzzk.naver.com/',
+                'Origin': 'https://chzzk.naver.com'
+            }
+            
+            # Run async download
+            output_path = loop.run_until_complete(
+                downloader.download_video(
+                    m3u8_url,
+                    self.output_path,
+                    progress_callback,
+                    headers=headers,
+                    cookies=cookies_dict,
+                    target_quality=self.quality,
+                    start_time=self.start_time,
+                    end_time=self.end_time
+                )
+            )
+            
+            loop.close()
+            
+            self.status_changed.emit("완료")
+            self.download_completed.emit(output_path)
+            
+        except Exception as e:
+            self.download_error.emit(f"수동 다운로드 실패: {str(e)}")
+    
+    def _run_ytdlp_download(self):
+        """Run yt-dlp download.
+
+        YouTube: 시스템 yt-dlp 바이너리 사용 (SABR 우회 위해 최신 버전 필요)
+        Chzzk  : Python yt_dlp 패키지 사용 (번들 포함, 외부 바이너리 불필요)
+        """
+        is_youtube = any(x in (self.url or '') for x in (
+            'youtube.com', 'youtu.be', 'youtube-nocookie.com'
+        ))
+        if is_youtube:
+            self._run_ytdlp_binary_download()
+        else:
+            self._run_ytdlp_package_download()
+
+    def _run_ytdlp_binary_download(self):
+        """YouTube/Chzzk ABR_HLS 전용: 시스템 yt-dlp 바이너리로 다운로드"""
+        import subprocess
+        import re as _re
+        import os
+
+        ytdlp_bin = resolve_yt_dlp_binary()
+        if not ytdlp_bin:
+            raise Exception(
+                "yt-dlp를 찾을 수 없습니다. 앱을 다시 실행해 설치 안내 팝업을 확인해주세요."
+            )
+        output_template = self.output_path + ".%(ext)s"
+
+        # ── 명령어 구성 (URL은 반드시 마지막) ──────────────────
+        cmd = [ytdlp_bin]
+        cmd += ["-f", self.format_selector]
+        cmd += ["--merge-output-format", "mp4"]
+        cmd += ["--newline"]        # 진행률 한 줄씩 출력
+        cmd += ["--no-warnings"]
+        cmd += ["-o", output_template]
+
+        # 시간 범위 (URL 앞에 추가)
+        if self.start_time is not None or self.end_time is not None:
+            start = self.start_time or 0
+            end   = self.end_time
+            if end is None:
+                section = f"*{start}-inf"
+            else:
+                section = f"*{start}-{end}"
+            cmd += ["--download-sections", section]
+            cmd += ["--force-keyframes-at-cuts"]  # 정확한 컷팅을 위해
+
+        # ffmpeg 경로 (URL 앞에 추가)
+        ffmpeg_path = get_ffmpeg_binary()
+        ffmpeg_dir  = os.path.dirname(ffmpeg_path)
+        env = os.environ.copy()
+        env['PATH'] = f"{ffmpeg_dir}:/opt/homebrew/bin:/usr/local/bin:{env.get('PATH', '')}"
+        cmd += ["--ffmpeg-location", ffmpeg_path]
+
+        # URL은 항상 마지막
+        cmd += [self.url]
+
+        print(f"DEBUG: Running yt-dlp binary: {' '.join(cmd)}")
+        self.status_changed.emit("다운로드 시작 중...")
+
+        proc = subprocess.Popen(
+            cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+            text=True, bufsize=1, env=env
+        )
+
+        # 진행률 파싱용 패턴
+        pct_re    = _re.compile(r'\[download\]\s+([\d.]+)%')
+        speed_re  = _re.compile(r'([\d.]+)([KMG]?)iB/s')
+        eta_re    = _re.compile(r'ETA\s+([\d:]+)')
+        # ffmpeg 재인코딩 진행률 (--force-keyframes-at-cuts 시 사용)
+        ftime_re  = _re.compile(r'time=([\d:]+\.?\d*)')
+        fspeed_re = _re.compile(r'speed=\s*([\d.]+)x')
+
+        # 구간 다운로드 시 총 길이 계산 (진행률 계산용)
+        section_duration = None
+        if self.start_time is not None and self.end_time is not None:
+            section_duration = self.end_time - self.start_time
+        elif self.end_time is not None:
+            section_duration = self.end_time
+
+        def _parse_speed(m):
+            val = float(m.group(1))
+            unit = m.group(2)
+            mul = {'K': 1024, 'M': 1024**2, 'G': 1024**3}.get(unit, 1)
+            return int(val * mul)
+
+        def _parse_eta(s):
+            parts = s.split(':')
+            try:
+                if len(parts) == 3:
+                    return int(parts[0])*3600 + int(parts[1])*60 + int(parts[2])
+                elif len(parts) == 2:
+                    return int(parts[0])*60 + int(parts[1])
+                return int(parts[0])
+            except Exception:
+                return 0
+
+        def _ftime_to_secs(t):
+            """HH:MM:SS.xx → float seconds"""
+            try:
+                parts = t.split(':')
+                if len(parts) == 3:
+                    return int(parts[0])*3600 + int(parts[1])*60 + float(parts[2])
+                elif len(parts) == 2:
+                    return int(parts[0])*60 + float(parts[1])
+                return float(parts[0])
+            except Exception:
+                return 0.0
+
+        output_path = self.output_path + ".mp4"
+        for line in proc.stdout:
+            if self.should_stop:
+                proc.terminate()
+                return
+
+            line = line.strip()
+            print(f"YTDLP OUT: {line}")
+
+            # ── [download] X% 진행률 (일반 다운로드) ───────────
+            pm = pct_re.search(line)
+            if pm:
+                pct   = int(float(pm.group(1)))
+                speed = _parse_speed(speed_re.search(line)) if speed_re.search(line) else 0
+                eta   = _parse_eta(eta_re.search(line).group(1)) if eta_re.search(line) else 0
+                self.progress_updated.emit(pct, speed, eta)
+                self.status_changed.emit(f"다운로드 중... {pm.group(1)}%")
+
+            # ── ffmpeg frame= time= 진행률 (재인코딩) ──────────
+            elif 'time=' in line and 'frame=' in line:
+                ft = ftime_re.search(line)
+                if ft and section_duration and section_duration > 0:
+                    elapsed = _ftime_to_secs(ft.group(1))
+                    pct = min(int(elapsed / section_duration * 100), 99)
+                    sm = fspeed_re.search(line)
+                    if sm:
+                        spd = float(sm.group(1))
+                        status = f"구간 인코딩 중... (인코딩 속도 {spd:.1f}배속)"
+                    else:
+                        status = "구간 인코딩 중..."
+                    self.progress_updated.emit(pct, 0, 0)
+                    self.status_changed.emit(status)
+                elif ft:
+                    self.status_changed.emit("구간 인코딩 중...")
+
+
+            # ── 파일 경로 추적 ─────────────────────────────────
+            dest_m = _re.search(r'\[download\] Destination: (.+)', line)
+            if dest_m:
+                output_path = dest_m.group(1).strip()
+            merge_m = _re.search(r'\[Merger\] Merging formats into "(.+)"', line)
+            if merge_m:
+                output_path = merge_m.group(1).strip()
+
+        proc.wait()
+        print(f"DEBUG: yt-dlp finished with code {proc.returncode}")
+        if proc.returncode != 0:
+            raise Exception(f"yt-dlp 다운로드 실패 (코드 {proc.returncode})")
+
+        self.status_changed.emit("완료")
+        self.download_completed.emit(output_path)
+
+
+    def _run_ytdlp_package_download(self):
+        """Chzzk 전용: Python yt_dlp 패키지로 다운로드"""
         actual_output_path = None
         
         try:
-            binary_paths = get_binary_paths()
-            missing_binaries = []
-            if "ffmpeg" not in binary_paths:
-                missing_binaries.append("ffmpeg")
-            if "ffprobe" not in binary_paths:
-                missing_binaries.append("ffprobe")
-
-            if missing_binaries:
-                missing_text = ", ".join(missing_binaries)
-                self.download_error.emit(
-                    f"필수 도구가 없습니다: {missing_text}\n"
-                    "설정 안내 팝업의 설치 링크/CLI 예시를 확인해주세요."
-                )
-                return
-
             # Create cookie file if cookies provided
             if self.cookies:
                 self.cookie_file = tempfile.NamedTemporaryFile(
@@ -123,48 +312,47 @@ class DownloadWorker(QThread):
                 self.cookie_file.write(self.cookies)
                 self.cookie_file.close()
             
-            # Configure yt-dlp options
+            fmt = self.format_selector or 'bestvideo+bestaudio/best'
+            ffmpeg_path = get_ffmpeg_binary()
             ydl_opts = {
-                'format': 'bestvideo+bestaudio/best',
-                'outtmpl': self.output_path + '.%(ext)s',  # Let yt-dlp add extension
+                'format': fmt,
+                'outtmpl': self.output_path + '.%(ext)s',
                 'merge_output_format': 'mp4',
                 'progress_hooks': [self._progress_hook],
                 'quiet': True,
                 'no_warnings': True,
+                'ffmpeg_location': ffmpeg_path,
+                'postprocessors': [{
+                    'key': 'FFmpegVideoConvertor',
+                    'preferedformat': 'mp4',
+                }],
                 'http_headers': {
                     'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36',
                 }
             }
-
-            # Ensure yt-dlp can invoke ffmpeg/ffprobe even when app PATH is restricted.
-            ffmpeg_path = binary_paths.get("ffmpeg")
-            ffmpeg_dir = str(Path(ffmpeg_path).parent) if ffmpeg_path else ""
-            if ffmpeg_dir:
-                ydl_opts['ffmpeg_location'] = ffmpeg_dir
-                existing_path = os.environ.get("PATH", "")
-                if ffmpeg_dir not in existing_path.split(os.pathsep):
-                    os.environ["PATH"] = ffmpeg_dir + os.pathsep + existing_path
+            
+            # Add range download support
+            if self.start_time is not None or self.end_time is not None:
+                def download_ranges_callback(info_dict, ydl):
+                    return [{
+                        'start_time': self.start_time if self.start_time is not None else 0,
+                        'end_time': self.end_time if self.end_time is not None else float('inf')
+                    }]
+                ydl_opts['download_ranges'] = download_ranges_callback
             
             if self.cookie_file:
                 ydl_opts['cookiefile'] = self.cookie_file.name
             
-            # Start download
             self.status_changed.emit("다운로드 시작 중...")
             
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                 if self.should_stop:
                     return
-                
-                # Download and get info
                 info = ydl.extract_info(self.url, download=True)
-                
-                # Get the actual output filename
                 if info:
                     actual_output_path = ydl.prepare_filename(info)
             
             self.status_changed.emit("완료")
-            
-            # Use actual path if available, otherwise fallback to expected path
             final_path = actual_output_path if actual_output_path else (self.output_path + '.mp4')
             self.download_completed.emit(final_path)
             
@@ -172,7 +360,6 @@ class DownloadWorker(QThread):
             self.download_error.emit(str(e))
         
         finally:
-            # Cleanup cookie file
             if self.cookie_file and os.path.exists(self.cookie_file.name):
                 try:
                     os.remove(self.cookie_file.name)
@@ -234,7 +421,11 @@ class DownloadManager(QObject):
         title: str,
         quality: str,
         output_dir: Path,
-        cookies: str = ""
+        cookies: str = "",
+        use_manual_download: bool = False,
+        start_time: Optional[float] = None,
+        end_time: Optional[float] = None,
+        format_selector: Optional[str] = None,
     ) -> str:
         """
         Start a new download
@@ -246,42 +437,52 @@ class DownloadManager(QObject):
             quality: Quality label (e.g., "1080p", "720p")
             output_dir: Output directory
             cookies: Cookie string
+            use_manual_download: Whether to use manual segment download
+            start_time: Start time in seconds
+            end_time: End time in seconds
+            format_selector: yt-dlp format selector string (YouTube quality)
         
         Returns:
             download_id
         """
         download_id = str(uuid.uuid4())
         
-        # Sanitize filename and add quality
+        # Sanitize filename
         safe_title = self._sanitize_filename(title)
-        filename = f"{safe_title}_{quality}"
-        output_path = str(output_dir / filename)
+        filename_suffix = quality
+        filename = f"{safe_title}_{filename_suffix}"
+        output_path = str(Path(output_dir) / filename)
         
         # Create worker
-        worker = DownloadWorker(url, output_path, cookies)
+        worker = DownloadWorker(
+            url, 
+            output_path, 
+            cookies, 
+            use_manual_download=use_manual_download,
+            video_id=video_id,
+            quality=quality,
+            start_time=start_time,
+            end_time=end_time,
+            format_selector=format_selector,
+        )
         self.active_downloads[download_id] = worker
-        worker.finished.connect(lambda did=download_id: self._cleanup_download(did))
         
-        # Start download
-        worker.start()
+        # NOTE: Worker is NOT started here. 
+        # Caller must connect signals first and then call worker.start()
         
         return download_id
     
     def cancel_download(self, download_id: str):
-        """Cancel a download without blocking UI."""
+        """Cancel a download"""
         if download_id in self.active_downloads:
             worker = self.active_downloads[download_id]
             worker.stop()
+            worker.wait()  # Wait for thread to finish
             del self.active_downloads[download_id]
     
     def get_worker(self, download_id: str) -> Optional[DownloadWorker]:
         """Get download worker by ID"""
         return self.active_downloads.get(download_id)
-
-    def _cleanup_download(self, download_id: str):
-        """Remove worker from active map when thread finishes."""
-        if download_id in self.active_downloads:
-            del self.active_downloads[download_id]
     
     @staticmethod
     def _sanitize_filename(filename: str) -> str:
