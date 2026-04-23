@@ -23,7 +23,7 @@ class ThumbnailLoader(QThread):
         """Download and load thumbnail"""
         try:
             if self.url:
-                data = urllib.request.urlopen(self.url).read()
+                data = urllib.request.urlopen(self.url, timeout=8).read()
                 pixmap = QPixmap()
                 pixmap.loadFromData(data)
                 if not pixmap.isNull():
@@ -198,7 +198,3 @@ class DownloadItemWidget(QWidget):
         """Set the loaded thumbnail image"""
         self.thumbnail_label.setPixmap(pixmap)
         self.thumbnail_label.setText("")  # Clear emoji text
-"""
-Download Item Widget
-Custom widget for displaying download progress
-"""

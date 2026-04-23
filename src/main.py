@@ -1,5 +1,5 @@
 """
-Chzzk Downloader - Main Entry Point
+ClipCatcher - Main Entry Point
 """
 import sys
 import asyncio
@@ -22,8 +22,8 @@ def main():
     app = QApplication(sys.argv)
     
     # Set application metadata
-    app.setApplicationName("Chzzk Downloader")
-    app.setOrganizationName("ChzzkDownloader")
+    app.setApplicationName("ClipCatcher")
+    app.setOrganizationName("ClipCatcher")
     app.setApplicationVersion("1.0.0")
     
     # Apply stylesheet

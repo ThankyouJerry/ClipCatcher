@@ -48,7 +48,7 @@ exe = EXE(
     a.scripts,
     [],
     exclude_binaries=True,
-    name='ChzzkDownloader',
+    name='ClipCatcher',
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
@@ -69,14 +69,14 @@ coll = COLLECT(
     strip=False,
     upx=True,
     upx_exclude=[],
-    name='ChzzkDownloader',
+    name='ClipCatcher',
 )
 
 app = BUNDLE(
     coll,
-    name='ChzzkDownloader.app',
+    name='ClipCatcher.app',
     icon=None,
-    bundle_identifier='com.chzzkdownloader.app',
+    bundle_identifier='com.clipcatcher.app',
     info_plist={
         'NSPrincipalClass': 'NSApplication',
         'NSHighResolutionCapable': 'True',

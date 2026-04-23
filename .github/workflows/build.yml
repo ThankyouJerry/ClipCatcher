@@ -37,13 +37,13 @@ jobs:
       
       - name: Create ZIP archive
         run: |
-          Compress-Archive -Path dist\ChzzkDownloader\* -DestinationPath ChzzkDownloader-Windows.zip
+          Compress-Archive -Path dist\ClipCatcher\* -DestinationPath ClipCatcher-Windows.zip
       
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: ChzzkDownloader-Windows
-          path: ChzzkDownloader-Windows.zip
+          name: ClipCatcher-Windows
+          path: ClipCatcher-Windows.zip
 
   release:
     needs: [build-windows]
@@ -53,18 +53,18 @@ jobs:
       - name: Download Windows artifact
         uses: actions/download-artifact@v4
         with:
-          name: ChzzkDownloader-Windows
+          name: ClipCatcher-Windows
       
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            ChzzkDownloader-Windows.zip
+            ClipCatcher-Windows.zip
           body: |
-            ## 🎥 Chzzk Downloader GUI
+            ## 🎥 ClipCatcher
             
             ### Windows
-            - ChzzkDownloader-Windows.zip (자동 빌드)
+            - ClipCatcher-Windows.zip (자동 빌드)
             
             ### macOS
             - macOS 버전은 기존 Release의 로컬 빌드를 사용하세요
@@ -72,8 +72,8 @@ jobs:
             
             ### Python 실행 (모든 플랫폼)
             ```bash
-            git clone https://github.com/SamKSH/chzzkdownloader-gui.git
-            cd chzzkdownloader-gui
+            git clone https://github.com/ThankyouJerry/ClipCatcher.git
+            cd ClipCatcher
             pip install -r requirements.txt
             python src/main.py
             ```
