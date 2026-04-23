@@ -558,6 +558,8 @@ class MainWindow(QMainWindow):
             "item": item,
             "widget": widget,
             "bucket": "active",
+            "title": title,
+            "thumbnail_url": self.current_metadata.get('thumbnail', ''),
         }
         self.pending_download_ids.append(download_id)
         widget.update_status("대기열에 추가됨")
@@ -597,7 +599,11 @@ class MainWindow(QMainWindow):
         if download_id in self.running_download_ids:
             self.running_download_ids.remove(download_id)
         self.download_manager.remove_download(download_id)
-        self._move_download_widget(download_id, "completed")
+        self._archive_download_widget(
+            download_id,
+            "completed",
+            output_path=_output_path,
+        )
         self._refresh_download_center()
         self._pump_download_queue()
 
@@ -606,12 +612,22 @@ class MainWindow(QMainWindow):
         if download_id in self.running_download_ids:
             self.running_download_ids.remove(download_id)
         self.download_manager.remove_download(download_id)
-        self._move_download_widget(download_id, "failed")
+        self._archive_download_widget(
+            download_id,
+            "failed",
+            error_message=_error_message,
+        )
         self._refresh_download_center()
         self._pump_download_queue()
 
-    def _move_download_widget(self, download_id: str, target_bucket: str):
-        """Move a download item widget between tab lists."""
+    def _archive_download_widget(
+        self,
+        download_id: str,
+        target_bucket: str,
+        output_path: str = "",
+        error_message: str = "",
+    ):
+        """Replace active widget with a fresh widget in target tab (safer than reparent move)."""
         if download_id not in self.download_widgets:
             return
         entry = self.download_widgets[download_id]
@@ -623,13 +639,33 @@ class MainWindow(QMainWindow):
         old_item = entry["item"]
         old_row = old_list.row(old_item)
         if old_row >= 0:
-            old_list.takeItem(old_row)
+            taken = old_list.takeItem(old_row)
+            del taken
+        old_widget = entry["widget"]
+        old_widget.deleteLater()
+
+        new_widget = DownloadItemWidget(
+            download_id=download_id,
+            title=entry.get("title", ""),
+            thumbnail_url=entry.get("thumbnail_url", ""),
+        )
+        new_widget.cancel_requested.connect(self._cancel_download)
+        new_widget.open_file_requested.connect(self._open_file)
+
+        if target_bucket == "completed":
+            new_widget.set_completed(output_path)
+        elif target_bucket == "failed":
+            new_widget.set_error(error_message)
+        else:
+            new_widget.update_status("대기열에 추가됨")
 
         new_item = QListWidgetItem(new_list)
-        new_item.setSizeHint(entry["widget"].sizeHint())
+        new_item.setSizeHint(new_widget.sizeHint())
         new_list.addItem(new_item)
-        new_list.setItemWidget(new_item, entry["widget"])
+        new_list.setItemWidget(new_item, new_widget)
+
         entry["item"] = new_item
+        entry["widget"] = new_widget
         entry["bucket"] = target_bucket
 
     def _remove_download_widget(self, download_id: str):
@@ -642,6 +678,7 @@ class MainWindow(QMainWindow):
             row = list_widget.row(entry["item"])
             if row >= 0:
                 list_widget.takeItem(row)
+        entry["widget"].deleteLater()
         del self.download_widgets[download_id]
 
     def _list_by_bucket(self, bucket: str):
