@@ -136,13 +136,14 @@ class DownloadWorker(QThread):
     def _run_ytdlp_download(self):
         """Run yt-dlp download.
 
-        YouTube: 시스템 yt-dlp 바이너리 사용 (SABR 우회 위해 최신 버전 필요)
-        Chzzk  : Python yt_dlp 패키지 사용 (번들 포함, 외부 바이너리 불필요)
+        YouTube/Chzzk ABR_HLS: 시스템 yt-dlp 바이너리 사용.
+        패키지에 번들된 yt_dlp는 사이트 변경에 뒤처질 수 있어 Chzzk VOD도
+        format_selector가 넘어온 경우 최신 시스템 바이너리를 우선 사용한다.
         """
         is_youtube = any(x in (self.url or '') for x in (
             'youtube.com', 'youtu.be', 'youtube-nocookie.com'
         ))
-        if is_youtube:
+        if is_youtube or self.format_selector:
             self._run_ytdlp_binary_download()
         else:
             self._run_ytdlp_package_download()
@@ -162,11 +163,22 @@ class DownloadWorker(QThread):
 
         # ── 명령어 구성 (URL은 반드시 마지막) ──────────────────
         cmd = [ytdlp_bin]
-        cmd += ["-f", self.format_selector]
+        fmt = self.format_selector or "bestvideo+bestaudio/best"
+        cmd += ["-f", fmt]
         cmd += ["--merge-output-format", "mp4"]
         cmd += ["--newline"]        # 진행률 한 줄씩 출력
         cmd += ["--no-warnings"]
         cmd += ["-o", output_template]
+
+        if self.cookies_netscape:
+            self.cookie_file = tempfile.NamedTemporaryFile(
+                mode="w",
+                suffix=".txt",
+                delete=False,
+            )
+            self.cookie_file.write(self.cookies_netscape)
+            self.cookie_file.close()
+            cmd += ["--cookies", self.cookie_file.name]
 
         # 시간 범위 (URL 앞에 추가)
         if self.start_time is not None or self.end_time is not None:
@@ -196,6 +208,7 @@ class DownloadWorker(QThread):
             cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
             text=True, bufsize=1, env=env
         )
+        recent_lines = []
 
         # 진행률 파싱용 패턴
         pct_re    = _re.compile(r'\[download\]\s+([\d.]+)%')
@@ -249,6 +262,10 @@ class DownloadWorker(QThread):
 
             line = line.strip()
             print(f"YTDLP OUT: {line}")
+            if line:
+                recent_lines.append(line)
+                if len(recent_lines) > 20:
+                    recent_lines.pop(0)
 
             # ── [download] X% 진행률 (일반 다운로드) ───────────
             pm = pct_re.search(line)
@@ -281,17 +298,28 @@ class DownloadWorker(QThread):
             dest_m = _re.search(r'\[download\] Destination: (.+)', line)
             if dest_m:
                 output_path = dest_m.group(1).strip()
+                self.status_changed.emit("파일 다운로드 중...")
             merge_m = _re.search(r'\[Merger\] Merging formats into "(.+)"', line)
             if merge_m:
                 output_path = merge_m.group(1).strip()
+                self.status_changed.emit("파일 병합 중...")
 
-        proc.wait()
-        print(f"DEBUG: yt-dlp finished with code {proc.returncode}")
-        if proc.returncode != 0:
-            raise Exception(f"yt-dlp 다운로드 실패 (코드 {proc.returncode})")
+        try:
+            proc.wait()
+            print(f"DEBUG: yt-dlp finished with code {proc.returncode}")
+            if proc.returncode != 0:
+                tail = "\n".join(recent_lines[-6:]) if recent_lines else ""
+                detail = f"\n최근 로그:\n{tail}" if tail else ""
+                raise Exception(f"yt-dlp 다운로드 실패 (코드 {proc.returncode}){detail}")
 
-        self.status_changed.emit("완료")
-        self.download_completed.emit(output_path)
+            self.status_changed.emit("완료")
+            self.download_completed.emit(output_path)
+        finally:
+            if self.cookie_file and os.path.exists(self.cookie_file.name):
+                try:
+                    os.remove(self.cookie_file.name)
+                except:
+                    pass
 
 
     def _run_ytdlp_package_download(self):
