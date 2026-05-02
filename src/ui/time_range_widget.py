@@ -1,6 +1,7 @@
 from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, 
                              QRadioButton, QLabel, QLineEdit, QButtonGroup, QFrame)
 from PyQt6.QtCore import Qt
+import re
 
 
 class TimeRangeWidget(QWidget):
@@ -60,7 +61,7 @@ class TimeRangeWidget(QWidget):
         self.start_label.setStyleSheet("color: #aaa; font-size: 12px;")
         self.start_input = QLineEdit()
         self.start_input.setPlaceholderText("0 또는 00:00:00")
-        self.start_input.setToolTip("초 단위(예: 90) 또는 HH:MM:SS 형식")
+        self.start_input.setToolTip("초 단위(예: 90), HH:MM:SS, 또는 45분00초 형식")
         self.start_input.setMinimumWidth(120)
 
         # End time
@@ -82,7 +83,7 @@ class TimeRangeWidget(QWidget):
         frame_layout.addWidget(self.input_area)
 
         # Hint
-        self.hint_label = QLabel("※ 초 단위(예: 90) 또는 HH:MM:SS 형식(예: 01:30:00) 모두 입력 가능합니다.")
+        self.hint_label = QLabel("※ 초 단위(예: 90), HH:MM:SS(예: 01:30:00), 한글 단위(예: 45분00초) 모두 입력 가능합니다.")
         self.hint_label.setStyleSheet("color: #666; font-size: 11px; padding-left: 20px;")
         frame_layout.addWidget(self.hint_label)
 
@@ -128,7 +129,7 @@ class TimeRangeWidget(QWidget):
     # ── Helpers ──────────────────────────────────────────────
 
     def _parse_time(self, time_str: str) -> float:
-        """Parse 'seconds' or 'HH:MM:SS' / 'MM:SS' to float seconds. Returns -1 if empty."""
+        """Parse seconds, HH:MM:SS/MM:SS, or Korean unit text like '45분00초'."""
         if not time_str or not time_str.strip():
             return -1
         
@@ -137,6 +138,18 @@ class TimeRangeWidget(QWidget):
         # Pure number
         if s.replace('.', '', 1).lstrip('-').isdigit():
             return float(s)
+
+        korean_match = re.fullmatch(
+            r"(?:(?P<hour>\d+(?:\.\d+)?)\s*시간)?\s*"
+            r"(?:(?P<minute>\d+(?:\.\d+)?)\s*분)?\s*"
+            r"(?:(?P<second>\d+(?:\.\d+)?)\s*초)?",
+            s,
+        )
+        if korean_match and any(korean_match.groupdict().values()):
+            hour = float(korean_match.group("hour") or 0)
+            minute = float(korean_match.group("minute") or 0)
+            second = float(korean_match.group("second") or 0)
+            return hour * 3600 + minute * 60 + second
 
         # Colon-separated
         parts = s.split(':')
@@ -182,5 +195,19 @@ class TimeRangeWidget(QWidget):
 
         if end_time is not None and start_time >= end_time:
             raise ValueError("시작 시간이 종료 시간보다 크거나 같을 수 없습니다.")
+
+        # Validate against current video duration when available.
+        if self.duration and self.duration > 0:
+            video_len = float(self.duration)
+            if start_time >= video_len:
+                raise ValueError(
+                    f"시작 시간이 영상 길이를 초과했습니다.\n"
+                    f"영상 길이: {self._format_time(video_len)}"
+                )
+            if end_time is not None and end_time > video_len:
+                raise ValueError(
+                    f"종료 시간이 영상 길이를 초과했습니다.\n"
+                    f"영상 길이: {self._format_time(video_len)}"
+                )
 
         return {'start': start_time, 'end': end_time}
