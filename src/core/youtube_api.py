@@ -7,6 +7,8 @@ import re
 import subprocess
 from typing import Dict, List, Optional
 
+import yt_dlp
+
 from core.dependency_check import resolve_yt_dlp_binary
 
 
@@ -37,22 +39,23 @@ class YouTubeAPI:
         --dump-json 옵션을 통해 JSON으로 파싱합니다.
         """
         ytdlp_bin = resolve_yt_dlp_binary()
-        if not ytdlp_bin:
-            raise Exception(
-                "yt-dlp를 찾을 수 없습니다.\n"
-                "설정 안내 팝업의 설치 가이드를 참고해주세요."
+        if ytdlp_bin:
+            result = subprocess.run(
+                [ytdlp_bin, "--dump-json", "--no-warnings", url],
+                capture_output=True,
+                text=True,
             )
+            if result.returncode != 0:
+                err = result.stderr.strip()
+                raise Exception(f"YouTube 정보 가져오기 실패:\n{err}")
+            info = json.loads(result.stdout)
+        else:
+            try:
+                with yt_dlp.YoutubeDL({"quiet": True, "no_warnings": True}) as ydl:
+                    info = ydl.extract_info(url, download=False)
+            except Exception as exc:
+                raise Exception(f"YouTube 정보 가져오기 실패:\n{exc}")
 
-        result = subprocess.run(
-            [ytdlp_bin, "--dump-json", "--no-warnings", url],
-            capture_output=True,
-            text=True,
-        )
-        if result.returncode != 0:
-            err = result.stderr.strip()
-            raise Exception(f"YouTube 정보 가져오기 실패:\n{err}")
-
-        info = json.loads(result.stdout)
         resolutions = self._extract_resolutions(info)
 
         raw_date = info.get('upload_date', '')

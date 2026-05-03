@@ -12,6 +12,8 @@ import sys
 import shutil
 import glob
 
+from core.app_tools import find_app_tool
+
 
 def _find_in_dir(base_dir: str) -> str:
     """base_dir/imageio_ffmpeg/binaries/ 안에서 ffmpeg 바이너리를 찾습니다."""
@@ -38,6 +40,10 @@ def get_ffmpeg_binary() -> str:
     """
     사용 가능한 ffmpeg 바이너리 경로를 반환합니다.
     """
+    app_tool = find_app_tool('ffmpeg')
+    if app_tool:
+        return app_tool
+
     # ── 1) PyInstaller 번들 환경 ─────────────────────────────────────────
     if getattr(sys, 'frozen', False):
         # 탐색 후보 디렉터리 목록

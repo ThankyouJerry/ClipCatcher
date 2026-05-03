@@ -10,6 +10,7 @@ import sys
 from dataclasses import dataclass
 from typing import List, Optional
 
+from core.app_tools import find_app_tool
 from core.ffmpeg_utils import get_ffmpeg_binary
 
 
@@ -44,6 +45,10 @@ def _run_version(binary: str, version_arg: str) -> ToolStatus:
 
 
 def resolve_yt_dlp_binary() -> Optional[str]:
+    app_tool = find_app_tool("yt-dlp")
+    if app_tool:
+        return app_tool
+
     candidates: List[Optional[str]] = [shutil.which("yt-dlp")]
     if sys.platform == "darwin":
         candidates.extend(["/opt/homebrew/bin/yt-dlp", "/usr/local/bin/yt-dlp"])
@@ -70,7 +75,17 @@ def resolve_yt_dlp_binary() -> Optional[str]:
 def check_yt_dlp() -> ToolStatus:
     binary = resolve_yt_dlp_binary()
     if not binary:
-        return ToolStatus(name="yt-dlp", binary=None, available=False, error="not found")
+        try:
+            import yt_dlp
+            version = getattr(yt_dlp.version, "__version__", "bundled")
+            return ToolStatus(
+                name="yt-dlp",
+                binary="bundled Python package",
+                available=True,
+                version=version,
+            )
+        except Exception as exc:
+            return ToolStatus(name="yt-dlp", binary=None, available=False, error=str(exc))
 
     status = _run_version(binary, "--version")
     status.name = "yt-dlp"
