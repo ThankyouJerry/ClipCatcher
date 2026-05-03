@@ -24,6 +24,7 @@ from core.youtube_api import YouTubeAPI
 from core.downloader import DownloadManager
 from core.config import Config
 from core.dependency_check import get_missing_dependencies
+from core.app_tools import find_app_tool, get_app_bin_dir, install_or_update_yt_dlp
 
 
 class MainWindow(QMainWindow):
@@ -54,6 +55,7 @@ class MainWindow(QMainWindow):
         self._init_ui()
         self._create_menu_bar()
         QTimer.singleShot(300, self._show_dependency_guide_if_needed)
+        QTimer.singleShot(600, self._show_ytdlp_install_prompt_if_needed)
     
     def _init_ui(self):
         """Initialize the user interface"""
@@ -273,6 +275,10 @@ class MainWindow(QMainWindow):
         about_action = QAction("정보", self)
         about_action.triggered.connect(self._show_about)
         help_menu.addAction(about_action)
+
+        install_ytdlp_action = QAction("yt-dlp 설치/업데이트", self)
+        install_ytdlp_action.triggered.connect(self._install_or_update_ytdlp)
+        help_menu.addAction(install_ytdlp_action)
     
     @asyncSlot()
     async def _fetch_metadata(self):
@@ -791,3 +797,41 @@ class MainWindow(QMainWindow):
             f"{cli_guide}\n\n"
             "설치 후 앱을 다시 실행하면 자동으로 인식됩니다."
         )
+
+    def _show_ytdlp_install_prompt_if_needed(self):
+        """Offer app-managed yt-dlp setup when the app-owned binary is missing."""
+        if find_app_tool("yt-dlp"):
+            return
+
+        response = QMessageBox.question(
+            self,
+            "yt-dlp 앱 전용 설치",
+            "ClipCatcher 전용 yt-dlp를 설치하면 Finder/Windows 실행 환경에서도 더 안정적으로 동작합니다.\n\n"
+            f"설치 위치:\n{get_app_bin_dir(create=False)}\n\n"
+            "지금 설치할까요?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.Yes,
+        )
+        if response == QMessageBox.StandardButton.Yes:
+            self._install_or_update_ytdlp()
+
+    def _install_or_update_ytdlp(self):
+        """Install or update yt-dlp in ClipCatcher's app-owned bin directory."""
+        try:
+            self.statusBar().showMessage("yt-dlp 설치/업데이트 중...")
+            path = install_or_update_yt_dlp()
+            QMessageBox.information(
+                self,
+                "yt-dlp 설치 완료",
+                f"yt-dlp를 설치/업데이트했습니다.\n\n{path}"
+            )
+        except Exception as e:
+            QMessageBox.warning(
+                self,
+                "yt-dlp 설치 실패",
+                "yt-dlp 설치/업데이트에 실패했습니다.\n\n"
+                f"{str(e)}\n\n"
+                "네트워크 연결을 확인하거나 CLI 설치 방법을 사용해주세요."
+            )
+        finally:
+            self.statusBar().clearMessage()

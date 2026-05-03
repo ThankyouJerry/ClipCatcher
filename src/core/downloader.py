@@ -143,7 +143,7 @@ class DownloadWorker(QThread):
         is_youtube = any(x in (self.url or '') for x in (
             'youtube.com', 'youtu.be', 'youtube-nocookie.com'
         ))
-        if is_youtube or self.format_selector:
+        if (is_youtube or self.format_selector) and resolve_yt_dlp_binary():
             self._run_ytdlp_binary_download()
         else:
             self._run_ytdlp_package_download()
