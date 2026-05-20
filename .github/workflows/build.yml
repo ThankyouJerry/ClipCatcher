@@ -30,6 +30,10 @@ jobs:
       - name: Build with PyInstaller
         run: |
           pyinstaller build.spec
+
+      - name: Smoke test packaged app
+        run: |
+          .\dist\ClipCatcher\ClipCatcher.exe --smoke
       
       - name: List dist contents
         run: |

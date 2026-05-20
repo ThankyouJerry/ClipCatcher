@@ -44,6 +44,8 @@ class YouTubeAPI:
                 [ytdlp_bin, "--dump-json", "--no-warnings", url],
                 capture_output=True,
                 text=True,
+                encoding="utf-8",
+                errors="replace",
             )
             if result.returncode != 0:
                 err = result.stderr.strip()

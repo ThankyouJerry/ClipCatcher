@@ -29,6 +29,8 @@ def _run_version(binary: str, version_arg: str) -> ToolStatus:
             [binary, version_arg],
             capture_output=True,
             text=True,
+            encoding="utf-8",
+            errors="replace",
             timeout=3,
             check=False,
         )

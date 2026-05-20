@@ -193,9 +193,13 @@ class DownloadWorker(QThread):
 
         # ffmpeg 경로 (URL 앞에 추가)
         ffmpeg_path = get_ffmpeg_binary()
-        ffmpeg_dir  = os.path.dirname(ffmpeg_path)
+        ffmpeg_dir = os.path.dirname(ffmpeg_path)
         env = os.environ.copy()
-        env['PATH'] = f"{ffmpeg_dir}:/opt/homebrew/bin:/usr/local/bin:{env.get('PATH', '')}"
+        extra_path_dirs = [ffmpeg_dir]
+        if os.name != "nt":
+            extra_path_dirs.extend(["/opt/homebrew/bin", "/usr/local/bin"])
+        extra_path_dirs = [path for path in extra_path_dirs if path]
+        env["PATH"] = os.pathsep.join(extra_path_dirs + [env.get("PATH", "")])
         cmd += ["--ffmpeg-location", ffmpeg_path]
 
         # URL은 항상 마지막
@@ -206,7 +210,7 @@ class DownloadWorker(QThread):
 
         proc = subprocess.Popen(
             cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-            text=True, bufsize=1, env=env
+            text=True, encoding="utf-8", errors="replace", bufsize=1, env=env
         )
         recent_lines = []
 

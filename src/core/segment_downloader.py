@@ -289,6 +289,8 @@ class SegmentDownloader:
                 ],
                 capture_output=True,
                 text=True,
+                encoding="utf-8",
+                errors="replace",
             )
             if result.returncode != 0:
                 # ffmpeg 실패 시 단순 결합 파일을 그대로 사용
@@ -303,4 +305,3 @@ class SegmentDownloader:
             import os
             print("[경고] ffmpeg을 찾을 수 없습니다. 재생이 정상적이지 않을 수 있습니다.")
             os.replace(temp_concat, output_path)
-

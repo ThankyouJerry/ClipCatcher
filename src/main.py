@@ -16,8 +16,25 @@ from ui.styles import get_stylesheet
 from core.config import Config
 
 
+def run_smoke_check() -> int:
+    """Run a lightweight packaged-app smoke check without opening the GUI."""
+    from core.dependency_check import get_missing_dependencies
+
+    missing = get_missing_dependencies()
+    if missing:
+        names = ", ".join(item.name for item in missing)
+        print(f"SMOKE_FAIL missing dependencies: {names}")
+        return 1
+
+    print("SMOKE_OK")
+    return 0
+
+
 def main():
     """Main application entry point"""
+    if "--smoke" in sys.argv:
+        return run_smoke_check()
+
     # Create application
     app = QApplication(sys.argv)
     
@@ -43,7 +60,8 @@ def main():
     # Run application
     with loop:
         loop.run_forever()
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())
