@@ -2,6 +2,7 @@
 Main Window for ClipCatcher
 """
 import asyncio
+import json
 import subprocess
 import platform
 import os
@@ -11,7 +12,7 @@ from PyQt6.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QLabel, QLineEdit, QPushButton, QComboBox,
     QListWidget, QListWidgetItem, QMessageBox,
-    QGroupBox, QSizePolicy, QTabWidget
+    QGroupBox, QSizePolicy, QTabWidget, QFileDialog
 )
 from PyQt6.QtGui import QAction, QPixmap
 from qasync import asyncSlot
@@ -262,6 +263,10 @@ class MainWindow(QMainWindow):
         settings_action = QAction("설정", self)
         settings_action.triggered.connect(self._open_settings)
         file_menu.addAction(settings_action)
+
+        import_clipradar_action = QAction("ClipRadar JSON 가져오기", self)
+        import_clipradar_action.triggered.connect(self._import_clipradar_json)
+        file_menu.addAction(import_clipradar_action)
         
         file_menu.addSeparator()
         
@@ -571,6 +576,101 @@ class MainWindow(QMainWindow):
         widget.update_status("대기열에 추가됨")
         self._refresh_download_center()
         self._pump_download_queue()
+
+    def _import_clipradar_json(self):
+        """Import ClipRadar report JSON and enqueue highlight range downloads."""
+        file_path, _ = QFileDialog.getOpenFileName(
+            self,
+            "ClipRadar JSON 가져오기",
+            str(Path.home()),
+            "ClipRadar JSON (*.json);;JSON Files (*.json);;All Files (*)",
+        )
+        if not file_path:
+            return
+
+        try:
+            with open(file_path, "r", encoding="utf-8") as f:
+                report = json.load(f)
+            if report.get("schemaVersion") != "clipradar.report.v1":
+                raise ValueError("지원하지 않는 ClipRadar JSON 형식입니다.")
+
+            video = report.get("video") or {}
+            moments = report.get("moments") or []
+            if not moments:
+                raise ValueError("다운로드할 하이라이트 구간이 없습니다.")
+
+            url = video.get("url") or ""
+            if not url:
+                raise ValueError("VOD URL이 JSON에 없습니다.")
+
+            parsed = self.api.parse_url(url)
+            video_id = video.get("id") or (parsed or {}).get("id") or "clipradar"
+            content_type = (parsed or {}).get("type", "vod")
+
+            self.current_metadata = {
+                "id": video_id,
+                "type": content_type,
+                "title": video.get("title", "ClipRadar Highlights"),
+                "thumbnail": video.get("thumbnail", ""),
+                "url": url,
+            }
+
+            queued = 0
+            for moment in moments:
+                start_time = self._clipradar_seconds(
+                    moment.get("startTimeSeconds", moment.get("start"))
+                )
+                end_time = self._clipradar_seconds(
+                    moment.get("endTimeSeconds", moment.get("end"))
+                )
+                if end_time is not None and start_time is not None and end_time <= start_time:
+                    continue
+
+                rank = moment.get("rank", queued + 1)
+                title = moment.get("title") or f"ClipRadar 하이라이트 #{rank}"
+                download_title = f"[ClipRadar #{rank}] {title}"
+                self._initiate_download(
+                    video_id=video_id,
+                    url=url,
+                    title=download_title,
+                    quality="ClipRadar",
+                    use_manual=False,
+                    start_time=start_time,
+                    end_time=end_time,
+                    format_selector="bestvideo+bestaudio/best",
+                )
+                queued += 1
+
+            if queued == 0:
+                raise ValueError("유효한 시작/종료 시간이 있는 구간이 없습니다.")
+
+            QMessageBox.information(
+                self,
+                "ClipRadar 가져오기 완료",
+                f"{queued}개 하이라이트를 다운로드 대기열에 추가했습니다.",
+            )
+        except Exception as e:
+            QMessageBox.warning(
+                self,
+                "ClipRadar 가져오기 실패",
+                f"JSON을 가져오지 못했습니다:\n{str(e)}",
+            )
+
+    @staticmethod
+    def _clipradar_seconds(value):
+        """Convert ClipRadar seconds or HH:MM:SS strings to seconds."""
+        if value is None or value == "":
+            return None
+        if isinstance(value, (int, float)):
+            return float(value)
+        parts = str(value).split(":")
+        try:
+            total = 0
+            for part in parts:
+                total = total * 60 + float(part)
+            return total
+        except ValueError:
+            return None
         
     def _cancel_download(self, download_id: str):
         """Cancel a download"""
