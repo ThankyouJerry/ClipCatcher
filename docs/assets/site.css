@@ -172,6 +172,10 @@ h3 {
   line-height: 1.75;
 }
 
+.lead.compact {
+  max-width: 820px;
+}
+
 .actions {
   display: flex;
   flex-wrap: wrap;
@@ -278,6 +282,12 @@ h3 {
   color: var(--muted);
   font-size: 14px;
   line-height: 1.6;
+}
+
+.shot-frame figcaption code {
+  display: inline-block;
+  max-width: 100%;
+  overflow-wrap: anywhere;
 }
 
 .step-list {

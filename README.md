@@ -32,6 +32,14 @@ ClipCatcher는 기존 `chzzkdownloader`를 발전시킨 후속작으로, 더 나
 | --- |
 | ![ClipCatcher failed downloads tab](assets/screenshots/04-failed-tab.png) |
 
+### 실제 링크 정보 조회 예시
+
+아래 화면은 예시 치지직 VOD 링크를 앱에 입력한 뒤 `정보 가져오기`로 영상 정보와 화질 목록을 불러온 상태입니다.
+
+| https://chzzk.naver.com/video/14046440 | https://chzzk.naver.com/video/14056205 |
+| --- | --- |
+| ![ClipCatcher demo for CHZZK video 14046440](assets/screenshots/demo-14046440.png) | ![ClipCatcher demo for CHZZK video 14056205](assets/screenshots/demo-14056205.png) |
+
 ## Project Position
 
 ClipCatcher는 이 계정의 대표 프로젝트입니다.
