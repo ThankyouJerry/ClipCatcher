@@ -20,6 +20,18 @@ ClipCatcher는 기존 `chzzkdownloader`를 발전시킨 후속작으로, 더 나
 - 직관적인 GUI 제공
 - 크로스 플랫폼 배포 지원
 
+## Screenshots
+
+![ClipCatcher main screen](assets/screenshots/01-main.png)
+
+| 진행중 | 완료 |
+| --- | --- |
+| ![ClipCatcher active downloads tab](assets/screenshots/02-active-tab.png) | ![ClipCatcher completed downloads tab](assets/screenshots/03-completed-tab.png) |
+
+| 실패 |
+| --- |
+| ![ClipCatcher failed downloads tab](assets/screenshots/04-failed-tab.png) |
+
 ## Project Position
 
 ClipCatcher는 이 계정의 대표 프로젝트입니다.
