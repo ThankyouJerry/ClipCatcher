@@ -35,6 +35,12 @@ ClipCatcher는 이 계정의 대표 프로젝트입니다.
 - Windows: `ClipCatcher-Windows.zip`
 - macOS: `ClipCatcher-macOS.zip`
 
+## Website
+
+ClipCatcher 소개, 사용사례, 사용법은 GitHub Pages에서 볼 수 있습니다.
+
+- [ClipCatcher Website](https://thankyoujerry.github.io/ClipCatcher/)
+
 ## Runtime Dependency
 
 실행/병합 과정에서 아래 도구가 필요합니다.

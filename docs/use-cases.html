@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>ClipCatcher - 사용사례</title>
+    <link rel="stylesheet" href="./assets/site.css" />
+  </head>
+  <body>
+    <main class="shell">
+      <nav class="nav">
+        <a class="brand" href="./index.html">
+          <span class="brand-mark">CC</span>
+          <span><strong>ClipCatcher</strong><span>Use cases</span></span>
+        </a>
+        <div class="nav-links">
+          <a href="./index.html">소개</a>
+          <a class="active" href="./use-cases.html">사용사례</a>
+          <a href="./guide.html">사용법</a>
+          <a href="./download.html">다운로드</a>
+        </div>
+      </nav>
+
+      <section class="section panel">
+        <p class="eyebrow">Real Use Cases</p>
+        <h1>이럴 때 ClipCatcher를 씁니다.</h1>
+        <p class="lead">
+          웹에서 분석을 대신 해주는 서비스처럼 보이기보다, 실제로 편집자가 마주하는 다운로드 상황을 기준으로 보여주는 페이지입니다.
+        </p>
+      </section>
+
+      <section class="section panel">
+        <div class="grid two">
+          <article class="card">
+            <span class="use-case-number">01</span>
+            <h3>긴 방송 중 특정 1시간만 저장</h3>
+            <p>전체 VOD가 8시간이어도 시작/종료 시간을 지정해 필요한 구간만 받습니다. 예를 들어 <code>5:00:00</code>부터 <code>6:00:00</code>까지만 저장할 수 있습니다.</p>
+            <div class="pill-row">
+              <span>시간 범위 지정</span>
+              <span>HH:MM:SS 입력</span>
+              <span>구간 다운로드</span>
+            </div>
+          </article>
+          <article class="card">
+            <span class="use-case-number">02</span>
+            <h3>치지직 클립과 VOD를 한 앱에서 관리</h3>
+            <p>치지직 VOD, 치지직 클립, YouTube 링크를 같은 흐름으로 불러와 메타데이터와 화질을 확인한 뒤 다운로드합니다.</p>
+            <div class="pill-row">
+              <span>CHZZK VOD</span>
+              <span>CHZZK Clip</span>
+              <span>YouTube</span>
+            </div>
+          </article>
+          <article class="card">
+            <span class="use-case-number">03</span>
+            <h3>여러 링크를 순차적으로 처리</h3>
+            <p>다운로드가 겹쳐 앱이 불안정해지는 것을 피하기 위해 기본 흐름은 순차 다운로드에 맞춰져 있습니다. 진행중/완료/실패 탭으로 상태를 구분합니다.</p>
+            <div class="pill-row">
+              <span>대기열</span>
+              <span>완료 탭</span>
+              <span>실패 탭</span>
+            </div>
+          </article>
+          <article class="card">
+            <span class="use-case-number">04</span>
+            <h3>하이라이트 후보만 받아 편집 준비</h3>
+            <p>분석 도구에서 찾은 후보 시점을 ClipCatcher로 가져와, 핵심 반응 앞뒤 여유를 포함한 추천 컷 범위만 다운로드하는 흐름으로 확장할 수 있습니다.</p>
+            <div class="pill-row">
+              <span>ClipRadar JSON</span>
+              <span>추천 컷</span>
+              <span>편집 준비</span>
+            </div>
+          </article>
+        </div>
+      </section>
+
+      <section class="section panel">
+        <p class="eyebrow">Failure Handling</p>
+        <h2>실패한 작업도 따로 확인</h2>
+        <div class="grid two">
+          <figure class="shot-frame">
+            <img src="./assets/screenshots/04-failed-tab.png" alt="ClipCatcher 실패 탭" />
+            <figcaption>실패 탭에서 어떤 항목이 실패했는지 확인하고, 원인 확인 후 다시 시도할 수 있습니다.</figcaption>
+          </figure>
+          <article class="card warning">
+            <span class="use-case-number">!</span>
+            <h3>필수 도구 안내</h3>
+            <p>다운로드와 병합에는 <code>ffmpeg</code>, <code>ffprobe</code>, <code>yt-dlp</code> 같은 도구가 필요할 수 있습니다. 앱은 필요한 도구가 없을 때 설치 안내를 표시합니다.</p>
+          </article>
+        </div>
+      </section>
+
+      <p class="footer">ClipCatcher는 다운로드 자체를 안정적으로 처리하는 메인 앱입니다.</p>
+    </main>
+  </body>
+</html>
