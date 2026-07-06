@@ -336,6 +336,19 @@ h3 {
   color: white;
 }
 
+.notice-card {
+  border-color: rgba(255, 210, 92, 0.34);
+  background:
+    linear-gradient(135deg, rgba(255, 210, 92, 0.08), rgba(34, 38, 56, 0.78) 42%),
+    rgba(34, 38, 56, 0.78);
+}
+
+.notice-card p:not(.eyebrow) {
+  max-width: 920px;
+  color: var(--muted);
+  line-height: 1.8;
+}
+
 .footer {
   margin-top: 22px;
   color: var(--muted);
