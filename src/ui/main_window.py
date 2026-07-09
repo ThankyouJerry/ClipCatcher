@@ -595,43 +595,81 @@ class MainWindow(QMainWindow):
                 raise ValueError("지원하지 않는 ClipRadar JSON 형식입니다.")
 
             video = report.get("video") or {}
+            videos = report.get("videos") or []
+            videos_by_id = {item.get("id"): item for item in videos if item.get("id")}
+            videos_by_url = {item.get("url"): item for item in videos if item.get("url")}
             moments = report.get("moments") or []
             if not moments:
                 raise ValueError("다운로드할 하이라이트 구간이 없습니다.")
 
-            url = video.get("url") or ""
-            if not url:
-                raise ValueError("VOD URL이 JSON에 없습니다.")
-
-            parsed = self.api.parse_url(url)
-            video_id = video.get("id") or (parsed or {}).get("id") or "clipradar"
-            content_type = (parsed or {}).get("type", "vod")
-
-            self.current_metadata = {
-                "id": video_id,
-                "type": content_type,
-                "title": video.get("title", "ClipRadar Highlights"),
-                "thumbnail": video.get("thumbnail", ""),
-                "url": url,
-            }
+            fallback_url = video.get("url") or ""
 
             queued = 0
+            missing_url_count = 0
+            invalid_range_count = 0
             for moment in moments:
+                moment_url = moment.get("url") or moment.get("videoUrl") or fallback_url
+                if not moment_url:
+                    missing_url_count += 1
+                    continue
+
+                video_ref = (
+                    videos_by_id.get(moment.get("videoId"))
+                    or videos_by_url.get(moment_url)
+                    or video
+                )
+                parsed = self.api.parse_url(moment_url)
+                video_id = (
+                    moment.get("videoId")
+                    or video_ref.get("id")
+                    or (parsed or {}).get("id")
+                    or "clipradar"
+                )
+                content_type = (parsed or {}).get("type", "vod")
+                vod_title = (
+                    moment.get("videoTitle")
+                    or moment.get("vodTitle")
+                    or video_ref.get("title")
+                    or video.get("title")
+                    or "ClipRadar Highlights"
+                )
+
+                self.current_metadata = {
+                    "id": video_id,
+                    "type": content_type,
+                    "title": vod_title,
+                    "thumbnail": moment.get("videoThumbnail") or video_ref.get("thumbnail", ""),
+                    "url": moment_url,
+                }
+
                 start_time = self._clipradar_seconds(
-                    moment.get("startTimeSeconds", moment.get("start"))
+                    moment.get(
+                        "cutStartTimeSeconds",
+                        moment.get("startTimeSeconds", moment.get("start")),
+                    )
                 )
                 end_time = self._clipradar_seconds(
-                    moment.get("endTimeSeconds", moment.get("end"))
+                    moment.get(
+                        "cutEndTimeSeconds",
+                        moment.get("endTimeSeconds", moment.get("end")),
+                    )
                 )
+                if start_time is None and end_time is None:
+                    invalid_range_count += 1
+                    continue
                 if end_time is not None and start_time is not None and end_time <= start_time:
+                    invalid_range_count += 1
                     continue
 
                 rank = moment.get("rank", queued + 1)
                 title = moment.get("title") or f"ClipRadar 하이라이트 #{rank}"
-                download_title = f"[ClipRadar #{rank}] {title}"
+                if len(videos) > 1:
+                    download_title = f"[ClipRadar #{rank}] {vod_title} - {title}"
+                else:
+                    download_title = f"[ClipRadar #{rank}] {title}"
                 self._initiate_download(
                     video_id=video_id,
-                    url=url,
+                    url=moment_url,
                     title=download_title,
                     quality="ClipRadar",
                     use_manual=False,
@@ -642,6 +680,14 @@ class MainWindow(QMainWindow):
                 queued += 1
 
             if queued == 0:
+                if missing_url_count == len(moments):
+                    raise ValueError(
+                        "VOD URL이 JSON에 없습니다. report.video.url 또는 각 moment.url/videoUrl을 확인해주세요."
+                    )
+                if invalid_range_count == len(moments):
+                    raise ValueError(
+                        "유효한 시작/종료 시간이 있는 구간이 없습니다. cutStartTimeSeconds/cutEndTimeSeconds 값을 확인해주세요."
+                    )
                 raise ValueError("유효한 시작/종료 시간이 있는 구간이 없습니다.")
 
             QMessageBox.information(
