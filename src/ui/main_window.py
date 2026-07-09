@@ -891,7 +891,7 @@ class MainWindow(QMainWindow):
             "ClipCatcher 정보",
             "<h3>ClipCatcher</h3>"
             "<p>네이버 치지직 VOD 및 클립 다운로더</p>"
-            "<p>Version 1.0.0</p>"
+            "<p>Version 2.0.5</p>"
             "<p>PyQt6 기반 데스크톱 애플리케이션</p>"
         )
 

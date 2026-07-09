@@ -1,7 +1,7 @@
 @echo off
 REM Build script for Windows
 
-echo Building Chzzk Downloader for Windows...
+echo Building ClipCatcher for Windows...
 
 REM Clean previous builds
 echo Cleaning previous builds...
@@ -14,7 +14,7 @@ pyinstaller build.spec
 
 if %ERRORLEVEL% EQU 0 (
     echo Build successful!
-    echo Application location: dist\ChzzkDownloader.exe
+    echo Application location: dist\ClipCatcher\ClipCatcher.exe
     echo.
     echo To create installer, use Inno Setup or NSIS
 ) else (

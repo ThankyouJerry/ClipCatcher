@@ -16,6 +16,9 @@ from ui.styles import get_stylesheet
 from core.config import Config
 
 
+APP_VERSION = "2.0.5"
+
+
 def run_smoke_check() -> int:
     """Run a lightweight packaged-app smoke check without opening the GUI."""
     from core.dependency_check import get_missing_dependencies
@@ -41,7 +44,7 @@ def main():
     # Set application metadata
     app.setApplicationName("ClipCatcher")
     app.setOrganizationName("ClipCatcher")
-    app.setApplicationVersion("1.0.0")
+    app.setApplicationVersion(APP_VERSION)
     
     # Apply stylesheet
     app.setStyleSheet(get_stylesheet())
