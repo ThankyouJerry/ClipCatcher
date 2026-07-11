@@ -225,7 +225,22 @@ class MainWindow(QMainWindow):
 
         self.download_center_label = QLabel()
         self.download_center_label.setObjectName("subtitleLabel")
-        layout.addWidget(self.download_center_label)
+
+        center_header = QHBoxLayout()
+        center_header.setSpacing(8)
+        center_header.addWidget(self.download_center_label, stretch=1)
+
+        self.open_download_folder_button = QPushButton("저장 폴더 열기")
+        self.open_download_folder_button.setObjectName("secondaryButton")
+        self.open_download_folder_button.setToolTip(
+            "설정된 다운로드 저장 폴더를 엽니다"
+        )
+        self.open_download_folder_button.setMinimumWidth(112)
+        self.open_download_folder_button.clicked.connect(
+            self._open_download_folder
+        )
+        center_header.addWidget(self.open_download_folder_button)
+        layout.addLayout(center_header)
 
         self.download_tabs = QTabWidget()
 
@@ -868,6 +883,24 @@ class MainWindow(QMainWindow):
                 subprocess.run(['xdg-open', file_path])
         except Exception as e:
             QMessageBox.warning(self, "오류", f"파일을 열 수 없습니다:\n{str(e)}")
+
+    def _open_download_folder(self):
+        """Open the configured root download folder."""
+        folder_path = Path(self.download_path)
+        try:
+            folder_path.mkdir(parents=True, exist_ok=True)
+            if platform.system() == "Darwin":
+                subprocess.run(["open", str(folder_path)], check=True)
+            elif platform.system() == "Windows":
+                os.startfile(str(folder_path))
+            else:
+                subprocess.run(["xdg-open", str(folder_path)], check=True)
+        except Exception as e:
+            QMessageBox.warning(
+                self,
+                "오류",
+                f"저장 폴더를 열 수 없습니다:\n{str(e)}",
+            )
     
     def _open_settings(self):
         """Open settings dialog"""
@@ -891,7 +924,7 @@ class MainWindow(QMainWindow):
             "ClipCatcher 정보",
             "<h3>ClipCatcher</h3>"
             "<p>네이버 치지직 VOD 및 클립 다운로더</p>"
-            "<p>Version 2.0.5</p>"
+            "<p>Version 2.0.6</p>"
             "<p>PyQt6 기반 데스크톱 애플리케이션</p>"
         )
 

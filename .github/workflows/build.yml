@@ -54,6 +54,9 @@ jobs:
     runs-on: ubuntu-latest
     if: startsWith(github.ref, 'refs/tags/')
     steps:
+      - name: Checkout release notes
+        uses: actions/checkout@v6
+
       - name: Download Windows artifact
         uses: actions/download-artifact@v8
         with:
@@ -64,23 +67,7 @@ jobs:
         with:
           files: |
             ClipCatcher-Windows.zip
-          body: |
-            ## 🎥 ClipCatcher
-            
-            ### Windows
-            - ClipCatcher-Windows.zip (자동 빌드)
-            
-            ### macOS
-            - macOS 버전은 기존 Release의 로컬 빌드를 사용하세요
-            - 또는 Python으로 실행 (권장)
-            
-            ### Python 실행 (모든 플랫폼)
-            ```bash
-            git clone https://github.com/ThankyouJerry/ClipCatcher.git
-            cd ClipCatcher
-            pip install -r requirements.txt
-            python src/main.py
-            ```
+          body_path: RELEASE_NOTES.md
           draft: false
           prerelease: false
         env:

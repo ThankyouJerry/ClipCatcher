@@ -4,7 +4,7 @@ Custom widget for displaying download progress
 """
 from PyQt6.QtWidgets import (
     QWidget, QHBoxLayout, QVBoxLayout, QLabel, 
-    QProgressBar, QPushButton, QFrame
+    QProgressBar, QPushButton, QFrame, QSizePolicy
 )
 from PyQt6.QtCore import Qt, pyqtSignal, QThread
 from PyQt6.QtGui import QPixmap
@@ -45,6 +45,7 @@ class DownloadItemWidget(QWidget):
         self.title = title
         self.thumbnail_url = thumbnail_url
         self.output_path = ""
+        self._compact = False
         
         self._init_ui()
         
@@ -81,7 +82,10 @@ class DownloadItemWidget(QWidget):
         self.title_label = QLabel(self.title)
         self.title_label.setObjectName("titleLabel")
         self.title_label.setWordWrap(True)
-        self.title_label.setMaximumWidth(400)
+        self.title_label.setSizePolicy(
+            QSizePolicy.Policy.Ignored,
+            QSizePolicy.Policy.Preferred,
+        )
         info_layout.addWidget(self.title_label)
         
         # Progress bar
@@ -106,13 +110,13 @@ class DownloadItemWidget(QWidget):
         
         self.cancel_button = QPushButton("취소")
         self.cancel_button.setObjectName("dangerButton")
-        self.cancel_button.setMaximumWidth(100)
+        self.cancel_button.setFixedWidth(92)
         self.cancel_button.clicked.connect(self._on_cancel)
         button_layout.addWidget(self.cancel_button)
         
         self.open_button = QPushButton("파일 열기")
         self.open_button.setObjectName("secondaryButton")
-        self.open_button.setMaximumWidth(100)
+        self.open_button.setFixedWidth(92)
         self.open_button.setVisible(False)
         self.open_button.clicked.connect(self._on_open_file)
         button_layout.addWidget(self.open_button)
@@ -137,6 +141,19 @@ class DownloadItemWidget(QWidget):
         widget_layout.addWidget(container)
         
         self.setLayout(widget_layout)
+
+    def resizeEvent(self, event):
+        """Keep the primary action visible when the download center is narrow."""
+        super().resizeEvent(event)
+        compact = event.size().width() < 560
+        if compact == self._compact:
+            return
+        self._compact = compact
+        self.thumbnail_label.setVisible(not compact)
+        button_width = 72 if compact else 92
+        self.cancel_button.setFixedWidth(button_width)
+        self.open_button.setFixedWidth(button_width)
+        self.open_button.setText("열기" if compact else "파일 열기")
     
     def update_progress(self, progress: int, speed: float, eta: int):
         """Update download progress"""
