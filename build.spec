@@ -77,7 +77,7 @@ app = BUNDLE(
     name='ClipCatcher.app',
     icon=None,
     bundle_identifier='com.clipcatcher.app',
-    version='2.0.6',
+    version='2.0.7',
     info_plist={
         'NSPrincipalClass': 'NSApplication',
         'NSHighResolutionCapable': 'True',

@@ -2,17 +2,56 @@
 Download Manager with automatic method selection
 """
 import os
+import re
 import uuid
 import tempfile
 import asyncio
 from pathlib import Path
 from typing import Dict, Optional
+from urllib.parse import urlparse
 from PyQt6.QtCore import QObject, pyqtSignal, QThread
 import yt_dlp
 
 from core.dependency_check import resolve_yt_dlp_binary
 from core.segment_downloader import SegmentDownloader
 from core.ffmpeg_utils import get_ffmpeg_binary
+
+
+YOUTUBE_HOST_MARKERS = (
+    'youtube.com',
+    'youtu.be',
+    'youtube-nocookie.com',
+)
+
+
+def is_youtube_url(url: str) -> bool:
+    """Return whether a URL should use YouTube-specific format selection."""
+    hostname = (urlparse(url or '').hostname or '').lower()
+    return any(
+        hostname == marker or hostname.endswith(f'.{marker}')
+        for marker in YOUTUBE_HOST_MARKERS
+    )
+
+
+def build_final_cut_format_selector(format_selector: Optional[str] = None) -> str:
+    """Prefer H.264 video and AAC audio while preserving the quality limit."""
+    height_match = re.search(r'height<=(\d+)', format_selector or '')
+    height_filter = f'[height<={height_match.group(1)}]' if height_match else ''
+
+    return '/'.join([
+        f'bestvideo[vcodec^=avc1]{height_filter}+bestaudio[acodec^=mp4a]',
+        f'bestvideo[vcodec^=avc1]{height_filter}+bestaudio[ext=m4a]',
+        f'best[vcodec^=avc1][acodec^=mp4a]{height_filter}',
+        f'best[vcodec^=avc1]{height_filter}',
+    ])
+
+
+def select_download_format(url: str, format_selector: Optional[str] = None) -> str:
+    """Apply editor-compatible constraints only to YouTube downloads."""
+    if is_youtube_url(url):
+        return build_final_cut_format_selector(format_selector)
+    return format_selector or 'bestvideo+bestaudio/best'
+
 
 class DownloadWorker(QThread):
     """Worker thread for downloading videos"""
@@ -140,9 +179,7 @@ class DownloadWorker(QThread):
         패키지에 번들된 yt_dlp는 사이트 변경에 뒤처질 수 있어 Chzzk VOD도
         format_selector가 넘어온 경우 최신 시스템 바이너리를 우선 사용한다.
         """
-        is_youtube = any(x in (self.url or '') for x in (
-            'youtube.com', 'youtu.be', 'youtube-nocookie.com'
-        ))
+        is_youtube = is_youtube_url(self.url)
         if (is_youtube or self.format_selector) and resolve_yt_dlp_binary():
             self._run_ytdlp_binary_download()
         else:
@@ -163,7 +200,7 @@ class DownloadWorker(QThread):
 
         # ── 명령어 구성 (URL은 반드시 마지막) ──────────────────
         cmd = [ytdlp_bin]
-        fmt = self.format_selector or "bestvideo+bestaudio/best"
+        fmt = select_download_format(self.url, self.format_selector)
         cmd += ["-f", fmt]
         cmd += ["--merge-output-format", "mp4"]
         cmd += ["--newline"]        # 진행률 한 줄씩 출력
@@ -341,7 +378,7 @@ class DownloadWorker(QThread):
                 self.cookie_file.write(self.cookies_netscape)
                 self.cookie_file.close()
             
-            fmt = self.format_selector or 'bestvideo+bestaudio/best'
+            fmt = select_download_format(self.url, self.format_selector)
             ffmpeg_path = get_ffmpeg_binary()
             ydl_opts = {
                 'format': fmt,

@@ -466,8 +466,8 @@ class MainWindow(QMainWindow):
             and vod_status != 'ABR_HLS'
         )
         
-        # Build yt-dlp format_selector for quality selection
-        # Applies to both YouTube and Chzzk ABR_HLS (yt-dlp handles both)
+        # Build yt-dlp format_selector for quality selection. The worker adds
+        # H.264/AAC constraints for YouTube to keep Final Cut compatibility.
         format_selector = None
         height = selected_res.get('height', 0)
         if content_type == 'youtube' or (content_type == 'vod' and vod_status == 'ABR_HLS'):
@@ -924,7 +924,7 @@ class MainWindow(QMainWindow):
             "ClipCatcher 정보",
             "<h3>ClipCatcher</h3>"
             "<p>네이버 치지직 VOD 및 클립 다운로더</p>"
-            "<p>Version 2.0.6</p>"
+            "<p>Version 2.0.7</p>"
             "<p>PyQt6 기반 데스크톱 애플리케이션</p>"
         )
 
