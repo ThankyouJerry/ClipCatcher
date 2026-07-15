@@ -6,6 +6,7 @@ import aiohttp
 import re
 import json
 from typing import Dict, Optional, List
+from urllib.parse import urlsplit, urlunsplit
 
 class ChzzkAPI:
     """Client for Chzzk API"""
@@ -93,6 +94,10 @@ class ChzzkAPI:
                     'title': video.get('videoTitle', 'Untitled'),
                     'thumbnail': video.get('thumbnailImageUrl', ''),
                     'duration': video.get('duration', 0),
+                    # Fast-replay metadata can be provisional while the HLS
+                    # playlist is still being finalized. Treat it as display
+                    # information and validate manual ranges against HLS.
+                    'duration_is_reliable': vod_status == 'ABR_HLS',
                     'channel_name': video.get('channel', {}).get('channelName', 'Unknown'),
                     'publish_date': video.get('publishDate', ''),
                     'resolutions': resolutions,
@@ -137,6 +142,7 @@ class ChzzkAPI:
                     'title': clip.get('clipTitle', 'Untitled'),
                     'thumbnail': clip.get('thumbnailImageUrl', ''),
                     'duration': clip.get('duration', 0),
+                    'duration_is_reliable': True,
                     'channel_name': clip.get('ownerChannel', {}).get('channelName', 'Unknown'),
                     'publish_date': clip.get('readablePublishDate', ''),
                     'resolutions': [{
@@ -296,20 +302,23 @@ class ChzzkAPI:
             if not master_url:
                 return None
             
-            # Replace vod_playlist.m3u8 with specific quality chunklist
-            # e.g., https://.../vod_playlist.m3u8 -> https://.../1080p/vod_chunklist.m3u8
-            base_url = master_url.rsplit('/', 1)[0]
+            # Keep signed query parameters separate while replacing the path.
+            # Splitting the raw URL by '/' would append the quality after the
+            # query string and produce an invalid signed URL.
+            parsed_url = urlsplit(master_url)
+            base_path = parsed_url.path.rsplit('/', 1)[0]
             quality_number = quality.replace('p', '')  # '1080p' -> '1080'
-            
-            # Construct variant playlist URL
-            variant_url = f"{base_url}/{quality_number}p/vod_chunklist.m3u8"
-            
-            # Preserve query parameters from master URL
-            if '?' in master_url:
-                query_params = master_url.split('?', 1)[1]
-                variant_url = f"{variant_url}?{query_params}"
-            
-            return variant_url
+
+            variant_path = f"{base_path}/{quality_number}p/vod_chunklist.m3u8"
+            return urlunsplit(
+                (
+                    parsed_url.scheme,
+                    parsed_url.netloc,
+                    variant_path,
+                    parsed_url.query,
+                    parsed_url.fragment,
+                )
+            )
             
         except Exception as e:
             print(f"Error extracting m3u8 URL: {e}")

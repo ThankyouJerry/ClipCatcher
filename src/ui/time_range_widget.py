@@ -10,6 +10,7 @@ class TimeRangeWidget(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.duration = 0
+        self.enforce_duration_limit = True
         self._init_ui()
         
     def _init_ui(self):
@@ -110,18 +111,23 @@ class TimeRangeWidget(QWidget):
         self.start_label.setStyleSheet(f"{opacity} font-size: 12px;")
         self.end_label.setStyleSheet(f"{opacity} font-size: 12px;")
 
-    def set_duration(self, duration_sec: float):
-        """Called after video info is fetched. Resets inputs with video duration."""
+    def set_duration(self, duration_sec: float, enforce_limit: bool = True):
+        """Reset inputs and configure whether metadata duration is authoritative."""
         self.duration = duration_sec
+        self.enforce_duration_limit = enforce_limit
         
         # Reset to full download
         self.radio_full.setChecked(True)
         self.start_input.clear()
         self.end_input.clear()
         
-        if duration_sec > 0:
+        if duration_sec > 0 and enforce_limit:
             self.end_input.setPlaceholderText(
-                f"영상 끝 ({self._format_time(duration_sec)})"
+                f"영상 끝 ({self.format_time(duration_sec)})"
+            )
+        elif duration_sec > 0:
+            self.end_input.setPlaceholderText(
+                f"참고 길이 ({self.format_time(duration_sec)}) - 다운로드 시 재확인"
             )
         else:
             self.end_input.setPlaceholderText("영상 끝까지")
@@ -165,7 +171,8 @@ class TimeRangeWidget(QWidget):
 
         raise ValueError(f"올바르지 않은 시간 형식입니다: '{time_str}'\n예) 90  또는  01:30:00")
 
-    def _format_time(self, seconds: float) -> str:
+    @staticmethod
+    def format_time(seconds: float) -> str:
         h = int(seconds // 3600)
         m = int((seconds % 3600) // 60)
         s = int(seconds % 60)
@@ -197,17 +204,17 @@ class TimeRangeWidget(QWidget):
             raise ValueError("시작 시간이 종료 시간보다 크거나 같을 수 없습니다.")
 
         # Validate against current video duration when available.
-        if self.duration and self.duration > 0:
+        if self.enforce_duration_limit and self.duration and self.duration > 0:
             video_len = float(self.duration)
             if start_time >= video_len:
                 raise ValueError(
                     f"시작 시간이 영상 길이를 초과했습니다.\n"
-                    f"영상 길이: {self._format_time(video_len)}"
+                    f"영상 길이: {self.format_time(video_len)}"
                 )
             if end_time is not None and end_time > video_len:
                 raise ValueError(
                     f"종료 시간이 영상 길이를 초과했습니다.\n"
-                    f"영상 길이: {self._format_time(video_len)}"
+                    f"영상 길이: {self.format_time(video_len)}"
                 )
 
         return {'start': start_time, 'end': end_time}

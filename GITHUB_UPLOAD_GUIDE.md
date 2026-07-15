@@ -20,8 +20,8 @@ PYTHONPATH=src python3 src/main.py --smoke
 4. Create and push a new version tag:
 
 ```bash
-git tag v2.0.7
-git push origin v2.0.7
+git tag v2.0.8
+git push origin v2.0.8
 ```
 
 5. GitHub Actions builds `ClipCatcher-Windows.zip` automatically.
@@ -40,11 +40,11 @@ Upload the zip from the GitHub Release page.
 ## Release Notes Template
 
 ```markdown
-## ClipCatcher v2.0.7
+## ClipCatcher v2.0.8
 
 ### Changes
-- Prefer H.264 video and AAC audio for Final Cut Pro compatibility.
-- Preserve the selected YouTube quality limit while choosing compatible streams.
+- Validate CHZZK fast-replay ranges against the actual HLS playlist duration.
+- Show publish time and video duration as separate metadata fields.
 
 ### Downloads
 - Windows: ClipCatcher-Windows.zip

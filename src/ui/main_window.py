@@ -187,6 +187,10 @@ class MainWindow(QMainWindow):
         self.video_date.setStyleSheet("font-size: 12px; color: #777;")
         text_col.addWidget(self.video_date)
 
+        self.video_duration = QLabel()
+        self.video_duration.setStyleSheet("font-size: 12px; color: #888;")
+        text_col.addWidget(self.video_duration)
+
         text_col.addStretch()
 
         # 화질 + 다운로드 버튼 — 썸네일 오른쪽 컬럼 안에 배치
@@ -383,7 +387,17 @@ class MainWindow(QMainWindow):
         
         # Update Time Range Widget with duration, and show it
         duration = metadata.get('duration', 0)
-        self.time_range_widget.set_duration(duration)
+        duration_is_reliable = metadata.get('duration_is_reliable', True)
+        self.time_range_widget.set_duration(
+            duration,
+            enforce_limit=duration_is_reliable,
+        )
+        if duration > 0:
+            duration_text = self.time_range_widget.format_time(duration)
+            suffix = "" if duration_is_reliable else " (다운로드 시 재확인)"
+            self.video_duration.setText(f"영상 길이: {duration_text}{suffix}")
+        else:
+            self.video_duration.setText("영상 길이: 확인 불가")
         self.time_range_widget.setVisible(True)
         
         # Update status indicator
@@ -924,7 +938,7 @@ class MainWindow(QMainWindow):
             "ClipCatcher 정보",
             "<h3>ClipCatcher</h3>"
             "<p>네이버 치지직 VOD 및 클립 다운로더</p>"
-            "<p>Version 2.0.7</p>"
+            "<p>Version 2.0.8</p>"
             "<p>PyQt6 기반 데스크톱 애플리케이션</p>"
         )
 

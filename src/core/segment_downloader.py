@@ -16,6 +16,52 @@ class SegmentDownloader:
     
     def __init__(self):
         self.session: Optional[aiohttp.ClientSession] = None
+
+    @staticmethod
+    def _playlist_duration(segments: List[Dict]) -> float:
+        """Return the authoritative duration represented by an HLS playlist."""
+        return sum(float(segment.get('duration', 0) or 0) for segment in segments)
+
+    @classmethod
+    def _select_media_segments(
+        cls,
+        segments: List[Dict],
+        start_time: Optional[float],
+        end_time: Optional[float],
+    ) -> List[str]:
+        """Validate a requested range against HLS and return overlapping URLs."""
+        playlist_duration = cls._playlist_duration(segments)
+        if playlist_duration <= 0:
+            raise ValueError("HLS 재생목록의 영상 길이를 확인할 수 없습니다.")
+
+        requested_start = max(float(start_time or 0), 0.0)
+        if requested_start >= playlist_duration:
+            raise ValueError(
+                "시작 시간이 실제 다운로드 가능 길이를 초과했습니다. "
+                f"(HLS 길이: {playlist_duration:.3f}초)"
+            )
+
+        if end_time is not None and float(end_time) > playlist_duration + 0.05:
+            raise ValueError(
+                "종료 시간이 실제 다운로드 가능 길이를 초과했습니다. "
+                f"(HLS 길이: {playlist_duration:.3f}초)"
+            )
+
+        selected = []
+        current_time = 0.0
+        for segment in segments:
+            duration = float(segment.get('duration', 0) or 0)
+            segment_end_time = current_time + duration
+            overlaps = segment_end_time > requested_start
+            if end_time is not None and current_time >= float(end_time):
+                overlaps = False
+            if overlaps:
+                selected.append(segment['url'])
+            current_time = segment_end_time
+
+        if not selected:
+            raise ValueError("요청한 시간 범위에 해당하는 HLS 세그먼트가 없습니다.")
+        return selected
     
     async def download_video(
         self,
@@ -85,24 +131,12 @@ class SegmentDownloader:
                 raise Exception("No media segments found in m3u8")
             
             # Filter segments by time range if specified
-            media_segments = []
             if start_time is not None or end_time is not None:
-                current_time = 0.0
-                for seg in all_segments:
-                    duration = seg.get('duration', 0)
-                    segment_end_time = current_time + duration
-                    
-                    # Check if segment overlaps with requested range
-                    in_range = True
-                    if start_time is not None and segment_end_time <= start_time:
-                        in_range = False
-                    if end_time is not None and current_time >= end_time:
-                        in_range = False
-                        
-                    if in_range:
-                        media_segments.append(seg['url'])
-                    
-                    current_time += duration
+                media_segments = self._select_media_segments(
+                    all_segments,
+                    start_time,
+                    end_time,
+                )
             else:
                 media_segments = [s['url'] for s in all_segments]
             
