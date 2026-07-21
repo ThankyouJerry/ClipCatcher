@@ -2,6 +2,9 @@
 ClipCatcher Configuration Management
 """
 import json
+import os
+import tempfile
+from copy import deepcopy
 from pathlib import Path
 from typing import Dict, Any, Optional
 
@@ -37,20 +40,22 @@ class Config:
             if loaded_config is not None:
                 return self._merge_with_defaults(loaded_config)
 
-        return self.DEFAULT_CONFIG.copy()
+        return deepcopy(self.DEFAULT_CONFIG)
 
     def _load_json(self, path: Path) -> Optional[Dict[str, Any]]:
         """Load JSON config from a specific file path."""
         try:
             with open(path, 'r', encoding='utf-8') as f:
-                return json.load(f)
+                loaded = json.load(f)
+            self._restrict_permissions(path)
+            return loaded
         except Exception as e:
             print(f"Error loading config from {path}: {e}")
             return None
 
     def _merge_with_defaults(self, loaded_config: Dict[str, Any]) -> Dict[str, Any]:
         """Merge loaded config with defaults, including nested cookie values."""
-        config = self.DEFAULT_CONFIG.copy()
+        config = deepcopy(self.DEFAULT_CONFIG)
         config.update(loaded_config)
 
         default_cookies = self.DEFAULT_CONFIG.get("cookies", {}).copy()
@@ -61,15 +66,45 @@ class Config:
         return config
     
     def save(self):
-        """Save configuration to file"""
+        """Atomically save configuration with owner-only permissions."""
+        temp_path = None
         try:
-            # Create config directory if it doesn't exist
             self.config_dir.mkdir(parents=True, exist_ok=True)
-            
-            with open(self.config_file, 'w', encoding='utf-8') as f:
+
+            fd, temp_name = tempfile.mkstemp(
+                prefix="config.",
+                suffix=".tmp",
+                dir=self.config_dir,
+            )
+            temp_path = Path(temp_name)
+            if os.name != "nt":
+                os.fchmod(fd, 0o600)
+            with os.fdopen(fd, 'w', encoding='utf-8') as f:
                 json.dump(self.config, f, indent=2, ensure_ascii=False)
+                f.flush()
+                os.fsync(f.fileno())
+
+            os.replace(temp_path, self.config_file)
+            temp_path = None
+            self._restrict_permissions(self.config_file)
         except Exception as e:
             print(f"Error saving config: {e}")
+        finally:
+            if temp_path and temp_path.exists():
+                try:
+                    temp_path.unlink()
+                except OSError:
+                    pass
+
+    @staticmethod
+    def _restrict_permissions(path: Path):
+        """Limit cookie-bearing config files to the current user on POSIX."""
+        if os.name == "nt":
+            return
+        try:
+            path.chmod(0o600)
+        except OSError as exc:
+            print(f"Error securing config permissions for {path}: {exc}")
     
     def get(self, key: str, default=None):
         """Get configuration value"""

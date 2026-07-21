@@ -33,7 +33,10 @@ echo "🗜️ Creating release archive..."
 ditto -c -k --sequesterRsrc --keepParent \
     "$STAGED_APP" dist/ClipCatcher-macOS.zip
 
+# The Desktop can reattach Finder metadata and invalidate a raw app bundle.
+# Keep only the verified archive as the release artifact.
+rm -rf dist/ClipCatcher.app dist/ClipCatcher
+
 echo "✅ Build successful!"
-echo "📁 Application location: dist/ClipCatcher.app"
 echo "📦 Release archive: dist/ClipCatcher-macOS.zip"
 shasum -a 256 dist/ClipCatcher-macOS.zip

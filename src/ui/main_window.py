@@ -26,6 +26,7 @@ from core.downloader import DownloadManager
 from core.config import Config
 from core.dependency_check import get_missing_dependencies
 from core.app_tools import find_app_tool, get_app_bin_dir, install_or_update_yt_dlp
+from core.dependency_check import is_yt_dlp_binary_usable
 
 
 class MainWindow(QMainWindow):
@@ -938,7 +939,7 @@ class MainWindow(QMainWindow):
             "ClipCatcher 정보",
             "<h3>ClipCatcher</h3>"
             "<p>네이버 치지직 VOD 및 클립 다운로더</p>"
-            "<p>Version 2.0.8</p>"
+            "<p>Version 2.0.9</p>"
             "<p>PyQt6 기반 데스크톱 애플리케이션</p>"
         )
 
@@ -992,14 +993,22 @@ class MainWindow(QMainWindow):
         )
 
     def _show_ytdlp_install_prompt_if_needed(self):
-        """Offer app-managed yt-dlp setup when the app-owned binary is missing."""
-        if find_app_tool("yt-dlp"):
+        """Offer app-managed setup when yt-dlp is missing or cannot start."""
+        app_tool = find_app_tool("yt-dlp")
+        if is_yt_dlp_binary_usable(app_tool):
             return
+
+        reason = (
+            "기존 앱 전용 yt-dlp가 실행되지 않아 복구가 필요합니다."
+            if app_tool
+            else "ClipCatcher 전용 yt-dlp가 아직 설치되지 않았습니다."
+        )
 
         response = QMessageBox.question(
             self,
             "yt-dlp 앱 전용 설치",
-            "ClipCatcher 전용 yt-dlp를 설치하면 Finder/Windows 실행 환경에서도 더 안정적으로 동작합니다.\n\n"
+            f"{reason}\n\n"
+            "앱 전용 yt-dlp를 설치하면 Finder/Windows 실행 환경에서도 더 안정적으로 동작합니다.\n\n"
             f"설치 위치:\n{get_app_bin_dir(create=False)}\n\n"
             "지금 설치할까요?",
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,

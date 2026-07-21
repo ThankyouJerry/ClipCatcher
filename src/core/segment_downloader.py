@@ -6,7 +6,7 @@ import asyncio
 import aiohttp
 import re
 from pathlib import Path
-from typing import List, Dict, Callable, Optional
+from typing import List, Dict, Callable, Optional, Tuple
 from urllib.parse import urljoin
 import urllib.parse
 
@@ -30,6 +30,21 @@ class SegmentDownloader:
         end_time: Optional[float],
     ) -> List[str]:
         """Validate a requested range against HLS and return overlapping URLs."""
+        selected, _, _ = cls._select_media_range(
+            segments,
+            start_time,
+            end_time,
+        )
+        return selected
+
+    @classmethod
+    def _select_media_range(
+        cls,
+        segments: List[Dict],
+        start_time: Optional[float],
+        end_time: Optional[float],
+    ) -> Tuple[List[str], float, float]:
+        """Return overlapping URLs plus exact trim offset and duration."""
         playlist_duration = cls._playlist_duration(segments)
         if playlist_duration <= 0:
             raise ValueError("HLS 재생목록의 영상 길이를 확인할 수 없습니다.")
@@ -47,7 +62,15 @@ class SegmentDownloader:
                 f"(HLS 길이: {playlist_duration:.3f}초)"
             )
 
+        requested_end = min(
+            float(end_time) if end_time is not None else playlist_duration,
+            playlist_duration,
+        )
+        if requested_end <= requested_start:
+            raise ValueError("종료 시간은 시작 시간보다 커야 합니다.")
+
         selected = []
+        selected_start = None
         current_time = 0.0
         for segment in segments:
             duration = float(segment.get('duration', 0) or 0)
@@ -56,12 +79,16 @@ class SegmentDownloader:
             if end_time is not None and current_time >= float(end_time):
                 overlaps = False
             if overlaps:
+                if selected_start is None:
+                    selected_start = current_time
                 selected.append(segment['url'])
             current_time = segment_end_time
 
         if not selected:
             raise ValueError("요청한 시간 범위에 해당하는 HLS 세그먼트가 없습니다.")
-        return selected
+        trim_start = requested_start - float(selected_start or 0.0)
+        trim_duration = requested_end - requested_start
+        return selected, trim_start, trim_duration
     
     async def download_video(
         self,
@@ -131,8 +158,10 @@ class SegmentDownloader:
                 raise Exception("No media segments found in m3u8")
             
             # Filter segments by time range if specified
+            trim_start = None
+            trim_duration = None
             if start_time is not None or end_time is not None:
-                media_segments = self._select_media_segments(
+                media_segments, trim_start, trim_duration = self._select_media_range(
                     all_segments,
                     start_time,
                     end_time,
@@ -176,7 +205,13 @@ class SegmentDownloader:
                 
                 # Combine segments
                 final_output = output_path if output_path.endswith('.mp4') else f"{output_path}.mp4"
-                self._combine_segments(init_path, segment_paths, final_output)
+                self._combine_segments(
+                    init_path,
+                    segment_paths,
+                    final_output,
+                    trim_start=trim_start,
+                    trim_duration=trim_duration,
+                )
                 
                 return final_output
                 
@@ -285,7 +320,9 @@ class SegmentDownloader:
         self,
         init_path: Optional[Path],
         segment_paths: List[Path],
-        output_path: str
+        output_path: str,
+        trim_start: Optional[float] = None,
+        trim_duration: Optional[float] = None,
     ):
         """
         Combine init segment and media segments into final video.
@@ -300,7 +337,9 @@ class SegmentDownloader:
         ffmpeg_bin = get_ffmpeg_binary()
 
         # ── Step 1: 바이트 결합 → 임시 fragmented MP4 ──────────────
-        temp_concat = output_path.replace(".mp4", "_raw.mp4")
+        output = Path(output_path)
+        temp_concat = output.with_name(f"{output.stem}_raw.mp4")
+        temp_remux = output.with_name(f"{output.stem}_remux.mp4")
         with open(temp_concat, "wb") as outfile:
             if init_path and init_path.exists():
                 with open(init_path, "rb") as f:
@@ -310,7 +349,7 @@ class SegmentDownloader:
                     with open(seg_path, "rb") as f:
                         outfile.write(f.read())
 
-        # ── Step 2: ffmpeg으로 remux → progressive MP4 ───────────────
+        # ── Step 2: ffmpeg으로 remux → timestamp가 정규화된 MP4 ──────
         try:
             result = subprocess.run(
                 [
@@ -318,8 +357,8 @@ class SegmentDownloader:
                     "-y",                    # 덮어쓰기 허용
                     "-i", temp_concat,       # 입력: fragmented MP4
                     "-c", "copy",            # 재인코딩 없이 컨테이너만 변환
-                    "-movflags", "+faststart",  # moov를 앞으로 이동 (웹 스트리밍 최적화)
-                    output_path,
+                    "-avoid_negative_ts", "make_zero",
+                    str(temp_remux),
                 ],
                 capture_output=True,
                 text=True,
@@ -327,15 +366,60 @@ class SegmentDownloader:
                 errors="replace",
             )
             if result.returncode != 0:
-                # ffmpeg 실패 시 단순 결합 파일을 그대로 사용
                 print(f"[ffmpeg 경고] remux 실패, 원본 유지:\n{result.stderr[-500:]}")
                 import os
-                os.replace(temp_concat, output_path)
-            else:
+                temp_remux.unlink(missing_ok=True)
+                if trim_start is not None or trim_duration is not None:
+                    temp_concat.unlink(missing_ok=True)
+                    raise RuntimeError("정확한 시간 범위 처리를 위한 ffmpeg remux에 실패했습니다.")
+                os.replace(temp_concat, output)
+                return
+
+            temp_concat.unlink(missing_ok=True)
+
+            if trim_start is None and trim_duration is None:
                 import os
-                os.remove(temp_concat)
+                os.replace(temp_remux, output)
+                return
+
+            # Segment boundaries are only approximate. Re-encode the selected
+            # interval so the requested start/end are frame-accurate and the
+            # result remains H.264/AAC compatible with Final Cut Pro.
+            trim_cmd = [ffmpeg_bin, "-y", "-i", str(temp_remux)]
+            if trim_start and trim_start > 0:
+                trim_cmd += ["-ss", f"{trim_start:.6f}"]
+            if trim_duration is not None:
+                trim_cmd += ["-t", f"{trim_duration:.6f}"]
+            trim_cmd += [
+                "-map", "0:v:0?",
+                "-map", "0:a:0?",
+                "-c:v", "libx264",
+                "-preset", "medium",
+                "-crf", "18",
+                "-c:a", "aac",
+                "-b:a", "192k",
+                "-movflags", "+faststart",
+                str(output),
+            ]
+            trim_result = subprocess.run(
+                trim_cmd,
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+            )
+            temp_remux.unlink(missing_ok=True)
+            if trim_result.returncode != 0:
+                output.unlink(missing_ok=True)
+                raise RuntimeError(
+                    "정확한 시간 범위 인코딩에 실패했습니다.\n"
+                    f"{trim_result.stderr[-500:]}"
+                )
         except FileNotFoundError:
-            # ffmpeg 없음 → 단순 결합 파일을 그대로 사용
             import os
+            if trim_start is not None or trim_duration is not None:
+                temp_concat.unlink(missing_ok=True)
+                temp_remux.unlink(missing_ok=True)
+                raise RuntimeError("정확한 시간 범위 다운로드에는 ffmpeg가 필요합니다.")
             print("[경고] ffmpeg을 찾을 수 없습니다. 재생이 정상적이지 않을 수 있습니다.")
-            os.replace(temp_concat, output_path)
+            os.replace(temp_concat, output)

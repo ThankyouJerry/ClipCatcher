@@ -3,6 +3,8 @@ Download Manager with automatic method selection
 """
 import os
 import re
+import subprocess
+import threading
 import uuid
 import tempfile
 import asyncio
@@ -87,6 +89,7 @@ class DownloadWorker(QThread):
         self.format_selector = format_selector
         self.should_stop = False
         self.cookie_file = None
+        self.process: Optional[subprocess.Popen] = None
     
     def run(self):
         """Run the download"""
@@ -97,6 +100,9 @@ class DownloadWorker(QThread):
                 self._run_ytdlp_download()
         except Exception as e:
             self.download_error.emit(str(e))
+        finally:
+            self.process = None
+            self._cleanup_cookie_file()
     
     def _run_manual_download(self):
         """Run manual segment download"""
@@ -187,7 +193,6 @@ class DownloadWorker(QThread):
 
     def _run_ytdlp_binary_download(self):
         """YouTube/Chzzk ABR_HLS 전용: 시스템 yt-dlp 바이너리로 다운로드"""
-        import subprocess
         import re as _re
         import os
 
@@ -249,6 +254,10 @@ class DownloadWorker(QThread):
             cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
             text=True, encoding="utf-8", errors="replace", bufsize=1, env=env
         )
+        self.process = proc
+        if self.should_stop:
+            self.stop()
+            return
         recent_lines = []
 
         # 진행률 파싱용 패턴
@@ -347,6 +356,8 @@ class DownloadWorker(QThread):
 
         try:
             proc.wait()
+            if self.should_stop:
+                return
             print(f"DEBUG: yt-dlp finished with code {proc.returncode}")
             if proc.returncode != 0:
                 tail = "\n".join(recent_lines[-6:]) if recent_lines else ""
@@ -469,8 +480,34 @@ class DownloadWorker(QThread):
             self.progress_updated.emit(100, 0, 0)
     
     def stop(self):
-        """Stop the download"""
+        """Request cancellation without blocking the GUI thread."""
         self.should_stop = True
+        process = self.process
+        if not process or process.poll() is not None:
+            return
+
+        try:
+            process.terminate()
+        except OSError:
+            return
+
+        def force_kill_if_needed():
+            threading.Event().wait(2)
+            if process.poll() is None:
+                try:
+                    process.kill()
+                except OSError:
+                    pass
+
+        threading.Thread(target=force_kill_if_needed, daemon=True).start()
+
+    def _cleanup_cookie_file(self):
+        """Remove a temporary cookie file once a worker exits."""
+        if self.cookie_file and os.path.exists(self.cookie_file.name):
+            try:
+                os.remove(self.cookie_file.name)
+            except OSError:
+                pass
 
     @staticmethod
     def _parse_cookie_header(cookie_header: str) -> Dict[str, str]:
@@ -553,12 +590,17 @@ class DownloadManager(QObject):
         return download_id
     
     def cancel_download(self, download_id: str):
-        """Cancel a download"""
-        if download_id in self.active_downloads:
-            worker = self.active_downloads[download_id]
-            worker.stop()
-            worker.wait()  # Wait for thread to finish
-            del self.active_downloads[download_id]
+        """Cancel a download and release it after its thread exits."""
+        worker = self.active_downloads.get(download_id)
+        if not worker:
+            return
+
+        worker.finished.connect(
+            lambda did=download_id: self.remove_download(did)
+        )
+        worker.stop()
+        if not worker.isRunning():
+            self.remove_download(download_id)
     
     def get_worker(self, download_id: str) -> Optional[DownloadWorker]:
         """Get download worker by ID"""

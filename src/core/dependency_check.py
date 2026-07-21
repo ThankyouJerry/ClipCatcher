@@ -46,12 +46,18 @@ def _run_version(binary: str, version_arg: str) -> ToolStatus:
     return ToolStatus(name="", binary=binary, available=True, version=version)
 
 
-def resolve_yt_dlp_binary() -> Optional[str]:
-    app_tool = find_app_tool("yt-dlp")
-    if app_tool:
-        return app_tool
+def is_yt_dlp_binary_usable(binary: Optional[str]) -> bool:
+    """Return whether a yt-dlp path is executable and can actually start."""
+    if not binary or not os.path.isfile(binary) or not os.access(binary, os.X_OK):
+        return False
+    return _run_version(binary, "--version").available
 
-    candidates: List[Optional[str]] = [shutil.which("yt-dlp")]
+
+def resolve_yt_dlp_binary() -> Optional[str]:
+    candidates: List[Optional[str]] = [
+        find_app_tool("yt-dlp"),
+        shutil.which("yt-dlp"),
+    ]
     if sys.platform == "darwin":
         candidates.extend(["/opt/homebrew/bin/yt-dlp", "/usr/local/bin/yt-dlp"])
     elif sys.platform == "win32":
@@ -66,10 +72,12 @@ def resolve_yt_dlp_binary() -> Optional[str]:
     else:
         candidates.extend(["/usr/local/bin/yt-dlp", "/usr/bin/yt-dlp"])
 
+    checked = set()
     for candidate in candidates:
-        if not candidate:
+        if not candidate or candidate in checked:
             continue
-        if os.path.isfile(candidate) and os.access(candidate, os.X_OK):
+        checked.add(candidate)
+        if is_yt_dlp_binary_usable(candidate):
             return candidate
     return None
 

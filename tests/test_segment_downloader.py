@@ -1,4 +1,8 @@
 import unittest
+from pathlib import Path
+from tempfile import TemporaryDirectory
+from unittest.mock import patch
+import subprocess
 
 from core.segment_downloader import SegmentDownloader
 
@@ -25,6 +29,43 @@ class SegmentRangeTests(unittest.TestCase):
         )
 
         self.assertEqual(selected, ['segment-1.m4s', 'segment-2.m4s'])
+
+    def test_range_includes_exact_trim_offset_and_duration(self):
+        selected, trim_start, trim_duration = SegmentDownloader._select_media_range(
+            self.segments,
+            start_time=3.0,
+            end_time=8.0,
+        )
+
+        self.assertEqual(selected, ['segment-1.m4s', 'segment-2.m4s'])
+        self.assertEqual(trim_start, 3.0)
+        self.assertEqual(trim_duration, 5.0)
+
+    def test_range_combine_reencodes_h264_aac_with_exact_times(self):
+        with TemporaryDirectory() as temp_dir:
+            directory = Path(temp_dir)
+            init_path = directory / 'init.m4s'
+            segment_path = directory / 'segment.m4s'
+            output_path = directory / 'output.mp4'
+            init_path.write_bytes(b'init')
+            segment_path.write_bytes(b'segment')
+
+            completed = subprocess.CompletedProcess([], 0, '', '')
+            with patch('core.ffmpeg_utils.get_ffmpeg_binary', return_value='ffmpeg'), \
+                    patch('subprocess.run', return_value=completed) as run:
+                SegmentDownloader()._combine_segments(
+                    init_path,
+                    [segment_path],
+                    str(output_path),
+                    trim_start=3.0,
+                    trim_duration=5.0,
+                )
+
+            trim_command = run.call_args_list[1].args[0]
+            self.assertIn('libx264', trim_command)
+            self.assertIn('aac', trim_command)
+            self.assertEqual(trim_command[trim_command.index('-ss') + 1], '3.000000')
+            self.assertEqual(trim_command[trim_command.index('-t') + 1], '5.000000')
 
     def test_rejects_start_beyond_hls_duration(self):
         with self.assertRaisesRegex(ValueError, '시작 시간'):
