@@ -3,6 +3,7 @@ Main Window for ClipCatcher
 """
 import asyncio
 import json
+import math
 import subprocess
 import platform
 import os
@@ -12,7 +13,8 @@ from PyQt6.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QLabel, QLineEdit, QPushButton, QComboBox,
     QListWidget, QListWidgetItem, QMessageBox,
-    QGroupBox, QSizePolicy, QTabWidget, QFileDialog
+    QGroupBox, QSizePolicy, QTabWidget, QFileDialog, QPlainTextEdit,
+    QRadioButton
 )
 from PyQt6.QtGui import QAction, QPixmap
 from qasync import asyncSlot
@@ -24,9 +26,8 @@ from core.chzzk_api import ChzzkAPI
 from core.youtube_api import YouTubeAPI
 from core.downloader import DownloadManager
 from core.config import Config
-from core.dependency_check import get_missing_dependencies
+from core.dependency_check import check_yt_dlp, get_missing_dependencies
 from core.app_tools import find_app_tool, get_app_bin_dir, install_or_update_yt_dlp
-from core.dependency_check import is_yt_dlp_binary_usable
 
 
 class YtDlpInstallWorker(QThread):
@@ -57,6 +58,10 @@ class MainWindow(QMainWindow):
         self.running_download_ids = set()
         self.thumbnail_loaders = []
         self.ytdlp_install_worker = None
+        self._closing = False
+        self._allow_close = False
+        self._batch_active = False
+        self._batch_cancel_requested = False
         self.max_concurrent_downloads = max(1, int(self.config.get("concurrent_downloads", 1)))
         
         # Load download path from config or default
@@ -121,19 +126,32 @@ class MainWindow(QMainWindow):
     
     def _create_url_input_section(self) -> QGroupBox:
         """Create URL input section"""
-        group = QGroupBox("URL 입력")
+        group = QGroupBox("다운로드 입력")
         layout = QVBoxLayout()
         layout.setSpacing(12)
-        
-        # URL input
+
+        mode_layout = QHBoxLayout()
+        self.single_mode_radio = QRadioButton("단일 파일")
+        self.single_mode_radio.setObjectName("inputMode")
+        self.single_mode_radio.setChecked(True)
+        self.batch_mode_radio = QRadioButton("여러 파일")
+        self.batch_mode_radio.setObjectName("inputMode")
+        self.batch_mode_radio.toggled.connect(self._set_input_mode)
+        mode_layout.addWidget(self.single_mode_radio)
+        mode_layout.addWidget(self.batch_mode_radio)
+        mode_layout.addStretch()
+        layout.addLayout(mode_layout)
+
+        self.single_input_widget = QWidget()
+        single_layout = QVBoxLayout(self.single_input_widget)
+        single_layout.setContentsMargins(0, 0, 0, 0)
         input_layout = QHBoxLayout()
-        
+
         self.url_input = QLineEdit()
         self.url_input.setPlaceholderText("치지직 또는 YouTube URL을 입력하세요 (예: https://chzzk.naver.com/video/12345 또는 https://youtu.be/xxxxx)")
         self.url_input.returnPressed.connect(self._fetch_metadata)
         input_layout.addWidget(self.url_input)
-        
-        # Status indicator
+
         self.status_indicator = QLabel("⚪")
         self.status_indicator.setStyleSheet("""
             QLabel {
@@ -147,17 +165,41 @@ class MainWindow(QMainWindow):
         self.fetch_button = QPushButton("정보 가져오기")
         self.fetch_button.clicked.connect(self._fetch_metadata)
         input_layout.addWidget(self.fetch_button)
-        
-        layout.addLayout(input_layout)
-        
-        # Status message label (hidden by default)
+        single_layout.addLayout(input_layout)
+
         self.status_message_label = QLabel()
         self.status_message_label.setWordWrap(True)
         self.status_message_label.setVisible(False)
-        layout.addWidget(self.status_message_label)
-        
+        single_layout.addWidget(self.status_message_label)
+        layout.addWidget(self.single_input_widget)
+
+        self.batch_input_widget = QWidget()
+        batch_layout = QVBoxLayout(self.batch_input_widget)
+        batch_layout.setContentsMargins(0, 0, 0, 0)
+        batch_hint = QLabel("영상 링크를 한 줄에 하나씩 입력하세요. 전체 영상을 확인 가능한 최고 화질로 대기열에 추가합니다.")
+        batch_hint.setWordWrap(True)
+        batch_layout.addWidget(batch_hint)
+        self.batch_input = QPlainTextEdit()
+        self.batch_input.setPlaceholderText("https://chzzk.naver.com/video/12345\nhttps://www.youtube.com/watch?v=...")
+        self.batch_input.setMinimumHeight(160)
+        batch_layout.addWidget(self.batch_input)
+        batch_action_layout = QHBoxLayout()
+        batch_action_layout.addStretch()
+        self.batch_button = QPushButton("대기열에 추가")
+        self.batch_button.clicked.connect(self._add_batch_downloads)
+        batch_action_layout.addWidget(self.batch_button)
+        batch_layout.addLayout(batch_action_layout)
+        self.batch_input_widget.hide()
+        layout.addWidget(self.batch_input_widget)
+
         group.setLayout(layout)
         return group
+
+    def _set_input_mode(self, batch_mode: bool):
+        self.single_input_widget.setVisible(not batch_mode)
+        self.batch_input_widget.setVisible(batch_mode)
+        self.info_group.setVisible(not batch_mode and self.current_metadata is not None)
+        self.time_range_widget.setVisible(not batch_mode and self.current_metadata is not None)
     
     def _create_video_info_section(self) -> QGroupBox:
         """Create video info display section"""
@@ -331,6 +373,7 @@ class MainWindow(QMainWindow):
         self.status_message_label.setVisible(False)
         
         # Hide info sections
+        self.current_metadata = None
         self.info_group.setVisible(False)
         self.time_range_widget.setVisible(False)
         self.download_button.setEnabled(False)
@@ -362,17 +405,7 @@ class MainWindow(QMainWindow):
             if cookies_dict.get("NID_AUT") and cookies_dict.get("NID_SES"):
                 cookie_str = f"NID_AUT={cookies_dict['NID_AUT']}; NID_SES={cookies_dict['NID_SES']}"
             
-            # Fetch metadata
-            if parsed['type'] == 'youtube':
-                # yt-dlp is synchronous → run in thread pool
-                loop = asyncio.get_event_loop()
-                metadata = await loop.run_in_executor(
-                    None, self.youtube_api.fetch_metadata, url
-                )
-            elif parsed['type'] == 'vod':
-                metadata = await self.api.fetch_vod_metadata(parsed['id'], cookie_str)
-            else:
-                metadata = await self.api.fetch_clip_metadata(parsed['id'], cookie_str)
+            metadata = await self._load_metadata(url, parsed, cookie_str)
             
             self.current_metadata = metadata
             self._display_metadata(metadata)
@@ -385,13 +418,96 @@ class MainWindow(QMainWindow):
         finally:
             self.fetch_button.setEnabled(True)
             self.fetch_button.setText("정보 가져오기")
+
+    async def _load_metadata(self, url: str, parsed: dict, cookie_str: str) -> dict:
+        if parsed['type'] == 'youtube':
+            loop = asyncio.get_running_loop()
+            return await loop.run_in_executor(None, self.youtube_api.fetch_metadata, url)
+        if parsed['type'] == 'vod':
+            return await self.api.fetch_vod_metadata(parsed['id'], cookie_str)
+        return await self.api.fetch_clip_metadata(parsed['id'], cookie_str)
+
+    @staticmethod
+    def _batch_urls(text: str):
+        urls = []
+        seen = set()
+        for line in text.splitlines():
+            url = line.strip()
+            if url and url not in seen:
+                seen.add(url)
+                urls.append(url)
+        return urls
+
+    @asyncSlot()
+    async def _add_batch_downloads(self):
+        if self._batch_active:
+            self._batch_cancel_requested = True
+            self.statusBar().showMessage("남은 링크 추가를 중단하는 중...")
+            return
+        urls = self._batch_urls(self.batch_input.toPlainText())
+        if not urls:
+            QMessageBox.warning(self, "입력 오류", "영상 링크를 한 줄에 하나씩 입력해주세요.")
+            return
+        if len(urls) > 100:
+            QMessageBox.warning(self, "입력 오류", "한 번에 최대 100개 링크를 추가할 수 있습니다.")
+            return
+
+        self._batch_cancel_requested = False
+        self._batch_active = True
+        try:
+            queued, failures = await self._enqueue_batch_urls(urls)
+        finally:
+            self._batch_active = False
+            self.batch_button.setText("대기열에 추가")
+            if not self._closing:
+                self.statusBar().clearMessage()
+
+        if self._closing:
+            return
+
+        message = f"{queued}개를 다운로드 대기열에 추가했습니다."
+        if failures:
+            message += f"\n\n추가하지 못한 링크 {len(failures)}개:\n" + "\n".join(failures[:10])
+            if len(failures) > 10:
+                message += f"\n외 {len(failures) - 10}개"
+        QMessageBox.information(self, "여러 링크 추가 결과", message)
+
+    async def _enqueue_batch_urls(self, urls):
+        """Resolve each URL in order, then reuse the regular download queue."""
+        queued = 0
+        failures = []
+        cookies = self.config.get("cookies", {})
+        cookie_str = ""
+        if cookies.get("NID_AUT") and cookies.get("NID_SES"):
+            cookie_str = f"NID_AUT={cookies['NID_AUT']}; NID_SES={cookies['NID_SES']}"
+        for index, url in enumerate(urls, 1):
+            if self._closing or self._batch_cancel_requested:
+                break
+            self.batch_button.setText("추가 중단")
+            self.statusBar().showMessage(f"영상 정보 확인 중: {index}/{len(urls)}")
+            parsed = self.api.parse_url(url)
+            if not parsed:
+                failures.append(f"{index}번: 지원하지 않는 URL")
+                continue
+            try:
+                metadata = await self._load_metadata(url, parsed, cookie_str)
+                if self._closing or self._batch_cancel_requested:
+                    break
+                resolutions = metadata.get("resolutions") or []
+                if not resolutions:
+                    raise ValueError("사용 가능한 화질이 없습니다")
+                self._queue_metadata_download(metadata, resolutions[0])
+                queued += 1
+            except Exception as exc:
+                failures.append(f"{index}번: {str(exc)[:120]}")
+        return queued, failures
     
     def _display_metadata(self, metadata: dict):
         """Display fetched metadata"""
         self.current_metadata = metadata
         
-        # Show info sections
-        self.info_group.setVisible(True)
+        show_details = self.single_mode_radio.isChecked()
+        self.info_group.setVisible(show_details)
         
         # Update text info
         self.title_label.setText(metadata['title'])
@@ -414,7 +530,7 @@ class MainWindow(QMainWindow):
             self.video_duration.setText(f"영상 길이: {duration_text}{suffix}")
         else:
             self.video_duration.setText("영상 길이: 확인 불가")
-        self.time_range_widget.setVisible(True)
+        self.time_range_widget.setVisible(show_details)
         
         # Update status indicator
         is_downloadable = metadata.get('is_downloadable', False)
@@ -462,13 +578,26 @@ class MainWindow(QMainWindow):
         else:
             self.thumbnail_label.setText("No Thumbnail")
         
-        # Update quality combo
+        # Update quality combo; an unknown bitrate must not look like a 0 kbps stream.
         self.quality_combo.clear()
         for res in metadata['resolutions']:
+            bitrate = res.get('bitrate')
+            known_bitrate = (
+                isinstance(bitrate, (int, float))
+                and not isinstance(bitrate, bool)
+                and math.isfinite(bitrate)
+                and bitrate >= 1000
+            )
+            bitrate_text = f" ({int(bitrate // 1000)} kbps)" if known_bitrate else ""
             self.quality_combo.addItem(
-                f"{res['label']} ({res.get('bitrate', 0) // 1000} kbps)",
+                f"{res['label']}{bitrate_text}",
                 res # Store the full resolution dict as data
             )
+        self.quality_combo.setToolTip(
+            "표시된 수치는 제공된 예상 비트레이트입니다. "
+            "수치가 없어도 표시된 해상도를 선택할 수 있습니다. "
+            "YouTube는 Final Cut 호환 H.264 화질을 표시합니다."
+        )
 
     def _set_main_thumbnail(self, url: str, data: bytes):
         """Decode and display thumbnail data on the GUI thread."""
@@ -504,69 +633,13 @@ class MainWindow(QMainWindow):
             QMessageBox.warning(self, "오류", "화질을 선택해주세요.")
             return
         
-        url = selected_res['url'] # Use the URL from the selected resolution
-        quality_label = selected_res['label'] # Use the label for display
-        title = self.current_metadata['title']
-        video_id = self.current_metadata['id']
-        
-        # Check if manual download is needed
-        # YouTube/Chzzk ABR_HLS: use yt-dlp
-        # Chzzk VOD_ON_AIR (fast replay): manual segment download
-        content_type = self.current_metadata.get('type', 'vod')
-        vod_status    = self.current_metadata.get('vod_status', '')
-        use_manual_download = (
-            content_type == 'vod'
-            and vod_status != 'ABR_HLS'
-        )
-        
-        # Build yt-dlp format_selector for quality selection. The worker adds
-        # H.264/AAC constraints for YouTube to keep Final Cut compatibility.
-        format_selector = None
-        height = selected_res.get('height', 0)
-        if content_type == 'clip':
-            # The worker refreshes the short-lived signed progressive URL just
-            # before the queued task starts.
-            format_selector = 'best'
-            url = self.current_metadata.get('url', url)
-        elif content_type == 'youtube' or (
-            content_type == 'vod' and vod_status == 'ABR_HLS'
-        ):
-            if height:
-                format_selector = f'bestvideo[height<={height}]+bestaudio/best[height<={height}]'
-            else:
-                format_selector = 'bestvideo+bestaudio/best'
-            # Use page URL (yt-dlp resolves actual stream URL from it)
-            url = self.current_metadata.get('url', url)
-
-        
         # Check split download
         try:
             time_range = self.time_range_widget.get_time_range()
-            print(f"DEBUG time_range: {time_range}")
-            print(f"DEBUG radio_partial checked: {self.time_range_widget.radio_partial.isChecked()}")
-            print(f"DEBUG start_input: '{self.time_range_widget.start_input.text()}'")
-            print(f"DEBUG end_input:   '{self.time_range_widget.end_input.text()}'")
         except ValueError as e:
             QMessageBox.warning(self, "입력 오류", str(e))
             return
-            
-        if not time_range:
-            # Download full video
-            self._initiate_download(video_id, url, title, quality_label, use_manual_download,
-                                    format_selector=format_selector)
-        else:
-            # Download selected part
-            part_title = f"{title} ({time_range['start']}초~)"
-            if time_range['end']:
-                part_title = f"{title} ({time_range['start']}초~{time_range['end']}초)"
-            
-            print(f"DEBUG: starting partial download start={time_range['start']} end={time_range['end']}")
-            self._initiate_download(
-                video_id, url, part_title, quality_label, use_manual_download,
-                start_time=time_range['start'],
-                end_time=time_range['end'],
-                format_selector=format_selector,
-            )
+        self._queue_metadata_download(self.current_metadata, selected_res, time_range)
 
         
         # Show confirmation
@@ -574,6 +647,35 @@ class MainWindow(QMainWindow):
             self,
             "다운로드 시작",
             f"다운로드가 시작되었습니다!\n저장 위치: {self.download_path}"
+        )
+
+    def _queue_metadata_download(self, metadata: dict, selected_res: dict, time_range=None):
+        """Enqueue one item using the same format rules for single and batch input."""
+        content_type = metadata.get('type', 'vod')
+        vod_status = metadata.get('vod_status', '')
+        use_manual = content_type == 'vod' and vod_status != 'ABR_HLS'
+        url = selected_res['url']
+        height = selected_res.get('height', 0)
+        format_selector = None
+        if content_type == 'clip':
+            format_selector = 'best'
+            url = metadata.get('url', url)
+        elif content_type == 'youtube' or (content_type == 'vod' and not use_manual):
+            if height:
+                format_selector = f'bestvideo[height<={height}]+bestaudio/best[height<={height}]'
+            else:
+                format_selector = 'bestvideo+bestaudio/best'
+            url = metadata.get('url', url)
+
+        title = metadata['title']
+        start_time = time_range['start'] if time_range else None
+        end_time = time_range['end'] if time_range else None
+        if time_range:
+            title += f" ({start_time}초~{end_time}초)" if end_time else f" ({start_time}초~)"
+        self._initiate_download(
+            metadata['id'], url, title, selected_res['label'], use_manual,
+            start_time=start_time, end_time=end_time,
+            format_selector=format_selector, thumbnail_url=metadata.get('thumbnail', ''),
         )
         
     def _initiate_download(
@@ -586,6 +688,7 @@ class MainWindow(QMainWindow):
         start_time=None, 
         end_time=None,
         format_selector=None,
+        thumbnail_url=None,
     ):
         """Helper to start a single download task"""
         from datetime import date
@@ -611,10 +714,12 @@ class MainWindow(QMainWindow):
         )
         
         # Create UI item
+        if thumbnail_url is None:
+            thumbnail_url = (self.current_metadata or {}).get('thumbnail', '')
         widget = DownloadItemWidget(
             download_id=download_id,
             title=title,
-            thumbnail_url=self.current_metadata.get('thumbnail', '') # Use current metadata thumbnail
+            thumbnail_url=thumbnail_url,
         )
         
         # Connect signals
@@ -645,7 +750,7 @@ class MainWindow(QMainWindow):
             "widget": widget,
             "bucket": "active",
             "title": title,
-            "thumbnail_url": self.current_metadata.get('thumbnail', ''),
+            "thumbnail_url": thumbnail_url,
         }
         self.pending_download_ids.append(download_id)
         widget.update_status("대기열에 추가됨")
@@ -819,6 +924,8 @@ class MainWindow(QMainWindow):
 
     def _pump_download_queue(self):
         """Start queued downloads up to concurrent limit."""
+        if self._closing:
+            return
         while self.pending_download_ids and len(self.running_download_ids) < self.max_concurrent_downloads:
             download_id = self.pending_download_ids.pop(0)
             worker = self.download_manager.get_worker(download_id)
@@ -993,7 +1100,7 @@ class MainWindow(QMainWindow):
             "ClipCatcher 정보",
             "<h3>ClipCatcher</h3>"
             "<p>네이버 치지직 VOD 및 클립 다운로더</p>"
-            "<p>Version 2.0.10</p>"
+            "<p>Version 2.0.11</p>"
             "<p>PyQt6 기반 데스크톱 애플리케이션</p>"
         )
 
@@ -1048,9 +1155,9 @@ class MainWindow(QMainWindow):
 
     def _show_ytdlp_install_prompt_if_needed(self):
         """Offer app-managed setup when yt-dlp is missing or cannot start."""
-        app_tool = find_app_tool("yt-dlp")
-        if is_yt_dlp_binary_usable(app_tool):
+        if check_yt_dlp().available:
             return
+        app_tool = find_app_tool("yt-dlp")
 
         reason = (
             "기존 앱 전용 yt-dlp가 실행되지 않아 복구가 필요합니다."
@@ -1109,6 +1216,9 @@ class MainWindow(QMainWindow):
             worker.deleteLater()
 
     def closeEvent(self, event):
+        if self._allow_close:
+            super().closeEvent(event)
+            return
         if self.ytdlp_install_worker and self.ytdlp_install_worker.isRunning():
             QMessageBox.information(
                 self,
@@ -1117,4 +1227,47 @@ class MainWindow(QMainWindow):
             )
             event.ignore()
             return
+        if self._closing:
+            event.ignore()
+            return
+        has_downloads = bool(
+            self.pending_download_ids
+            or self.running_download_ids
+            or any(worker.isRunning() for worker in self.download_manager._retired_downloads.values())
+            or self._batch_active
+        )
+        if has_downloads:
+            answer = QMessageBox.question(
+                self,
+                "다운로드 중 종료",
+                "진행 중인 다운로드와 링크 추가 작업을 취소하고 종료할까요?",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No,
+            )
+            if answer != QMessageBox.StandardButton.Yes:
+                event.ignore()
+                return
+            self._closing = True
+            self._batch_cancel_requested = True
+            for download_id in list(self.pending_download_ids) + list(self.running_download_ids):
+                self._cancel_download(download_id)
+            self.statusBar().showMessage("작업 스레드가 종료되기를 기다리는 중...")
+            QTimer.singleShot(50, self._finish_close_when_idle)
+            event.ignore()
+            return
+        if any(loader.isRunning() for loader in self.thumbnail_loaders + list(ThumbnailLoader._running_loaders)):
+            self._closing = True
+            QTimer.singleShot(50, self._finish_close_when_idle)
+            event.ignore()
+            return
         super().closeEvent(event)
+
+    def _finish_close_when_idle(self):
+        workers = list(self.download_manager.active_downloads.values())
+        workers += list(self.download_manager._retired_downloads.values())
+        loaders = self.thumbnail_loaders + list(ThumbnailLoader._running_loaders)
+        if self._batch_active or any(worker.isRunning() for worker in workers + loaders):
+            QTimer.singleShot(50, self._finish_close_when_idle)
+            return
+        self._allow_close = True
+        self.close()

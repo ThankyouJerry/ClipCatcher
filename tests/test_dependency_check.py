@@ -1,7 +1,9 @@
 import os
+import sys
 import tempfile
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import patch
 
 from core import dependency_check
@@ -28,12 +30,41 @@ class YtDlpResolutionTests(unittest.TestCase):
                 "#!/bin/sh\necho 2026.07.04\n",
             )
 
-            with patch.object(dependency_check, "find_app_tool", return_value=broken), \
-                    patch.object(dependency_check.shutil, "which", return_value=working):
+            with patch.object(
+                dependency_check,
+                "get_yt_dlp_binary_candidates",
+                return_value=[broken, working, working],
+            ):
                 self.assertEqual(
                     dependency_check.resolve_yt_dlp_binary(),
                     working,
                 )
+
+    def test_system_binary_counts_as_installed_without_app_binary(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            working = self._make_executable(
+                Path(temp_dir), "yt-dlp", "#!/bin/sh\necho 2026.07.04\n"
+            )
+            with patch.object(
+                dependency_check,
+                "get_yt_dlp_binary_candidates",
+                return_value=[None, working],
+            ):
+                status = dependency_check.check_yt_dlp()
+
+        self.assertTrue(status.available)
+        self.assertEqual(status.binary, working)
+
+    def test_python_package_counts_as_installed_without_binary(self):
+        package = SimpleNamespace(version=SimpleNamespace(__version__="2026.07.04"))
+        with patch.object(
+            dependency_check, "get_yt_dlp_binary_candidates", return_value=[]
+        ), patch.dict(sys.modules, {"yt_dlp": package}):
+            status = dependency_check.check_yt_dlp()
+
+        self.assertTrue(status.available)
+        self.assertEqual(status.binary, "bundled Python package")
+        self.assertEqual(status.version, "2026.07.04")
 
     def test_rejects_non_executable_candidate(self):
         with tempfile.TemporaryDirectory() as temp_dir:

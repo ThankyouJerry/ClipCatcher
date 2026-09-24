@@ -73,6 +73,8 @@ class ChzzkApiTests(unittest.TestCase):
         metadata = asyncio.run(api.fetch_vod_metadata("14046440"))
 
         self.assertEqual(metadata["resolutions"][0]["quality"], "best")
+        self.assertIn("자동 선택", metadata["resolutions"][0]["label"])
+        self.assertNotIn("bitrate", metadata["resolutions"][0])
         self.assertEqual(
             metadata["resolutions"][0]["url"],
             "https://chzzk.naver.com/video/14046440",
@@ -152,6 +154,44 @@ class ChzzkApiTests(unittest.TestCase):
         ))
 
         self.assertEqual(resolutions[0]["url"], direct_url)
+        self.assertEqual(resolutions[0]["bitrate"], 980000)
+
+    def test_playback_omits_unreported_bitrate_but_keeps_quality(self):
+        api = ChzzkAPI()
+        api._request_json = AsyncMock(return_value={
+            "period": [{"adaptationSet": [{
+                "mimeType": "video/mp4",
+                "representation": [
+                    {"height": 1080, "width": 1920, "bandwidth": 0},
+                    {"height": 720, "width": 1280},
+                    {"height": 480, "width": 854, "bandwidth": "unknown"},
+                ],
+            }]}],
+        })
+
+        resolutions = asyncio.run(api._fetch_abr_resolutions(
+            "video-id", "signed-key", "https://chzzk.naver.com/video/1", {},
+        ))
+
+        self.assertEqual([r["label"] for r in resolutions], ["1080p", "720p", "480p"])
+        self.assertTrue(all("bitrate" not in r for r in resolutions))
+
+    def test_fast_replay_only_reports_valid_track_bitrate(self):
+        api = ChzzkAPI()
+        resolutions = api._parse_resolutions({
+            "liveRewindPlaybackJson": json.dumps({"media": [{
+                "path": "https://example.com/master.m3u8",
+                "encodingTrack": [
+                    {"encodingTrackId": "1080P", "videoHeight": 1080,
+                     "videoBitRate": 5_000_000},
+                    {"encodingTrackId": "720P", "videoHeight": 720,
+                     "videoBitRate": 0},
+                ],
+            }]})
+        })
+
+        self.assertEqual(resolutions[0]["bitrate"], 5_000_000)
+        self.assertNotIn("bitrate", resolutions[1])
 
     def test_rejects_untrusted_progressive_stream_host(self):
         representation = {

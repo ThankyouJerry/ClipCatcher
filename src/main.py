@@ -16,7 +16,7 @@ from ui.styles import get_stylesheet
 from core.config import Config
 
 
-APP_VERSION = "2.0.10"
+APP_VERSION = "2.0.11"
 
 
 def run_smoke_check() -> int:

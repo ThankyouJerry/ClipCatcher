@@ -89,6 +89,38 @@ def get_stylesheet() -> str:
     QLineEdit:focus {{
         border-color: {COLORS['primary']};
     }}
+
+    QPlainTextEdit {{
+        background-color: {COLORS['surface']};
+        border: 2px solid {COLORS['border']};
+        border-radius: 6px;
+        padding: 10px 12px;
+        color: {COLORS['text']};
+        selection-background-color: {COLORS['primary']};
+    }}
+
+    QPlainTextEdit:focus {{
+        border-color: {COLORS['primary']};
+    }}
+
+    QRadioButton#inputMode {{
+        background-color: {COLORS['surface_light']};
+        border: 1px solid {COLORS['border']};
+        border-radius: 6px;
+        padding: 7px 12px;
+        spacing: 0;
+    }}
+
+    QRadioButton#inputMode:checked {{
+        background-color: {COLORS['primary']};
+        border-color: {COLORS['primary']};
+        color: white;
+    }}
+
+    QRadioButton#inputMode::indicator {{
+        width: 0px;
+        height: 0px;
+    }}
     
     /* Combo Box (Dropdown) */
     QComboBox {{

@@ -6,10 +6,11 @@ from PyQt6.QtWidgets import (
     QWidget, QHBoxLayout, QVBoxLayout, QLabel, 
     QProgressBar, QPushButton, QFrame, QSizePolicy
 )
-from PyQt6.QtCore import Qt, pyqtSignal, QThread
+from PyQt6.QtCore import Qt, pyqtSignal, QThread, QTimer
 from PyQt6.QtGui import QPixmap
 import os
 import urllib.request
+import weakref
 from urllib.parse import urlsplit
 
 class ThumbnailLoader(QThread):
@@ -17,6 +18,17 @@ class ThumbnailLoader(QThread):
     thumbnail_loaded = pyqtSignal(str, bytes)
 
     MAX_THUMBNAIL_BYTES = 10 * 1024 * 1024
+    _running_loaders = set()
+
+    @classmethod
+    def _release_finished(cls, loader_ref):
+        loader = loader_ref()
+        if loader is None:
+            return
+        if loader.isRunning():
+            QTimer.singleShot(10, lambda: cls._release_finished(loader_ref))
+        else:
+            cls._running_loaders.discard(loader)
     
     def __init__(self, url: str):
         super().__init__()
@@ -216,6 +228,11 @@ class DownloadItemWidget(QWidget):
     def _load_thumbnail(self):
         """Load thumbnail image from URL"""
         self.thumbnail_loader = ThumbnailLoader(self.thumbnail_url)
+        loader_ref = weakref.ref(self.thumbnail_loader)
+        ThumbnailLoader._running_loaders.add(self.thumbnail_loader)
+        self.thumbnail_loader.finished.connect(
+            lambda: ThumbnailLoader._release_finished(loader_ref)
+        )
         self.thumbnail_loader.thumbnail_loaded.connect(self._set_thumbnail)
         self.thumbnail_loader.start()
     

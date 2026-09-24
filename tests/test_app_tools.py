@@ -9,6 +9,20 @@ from core import app_tools
 
 
 class YtDlpUpdaterTests(unittest.TestCase):
+    def test_candidate_locations_include_app_and_system_installations(self):
+        with patch.object(app_tools, "find_app_tool", return_value="/app/yt-dlp"), patch.object(
+            app_tools.shutil, "which", return_value="/path/yt-dlp"
+        ), patch.object(app_tools.sys, "platform", "darwin"):
+            self.assertEqual(
+                app_tools.get_yt_dlp_binary_candidates(),
+                [
+                    "/app/yt-dlp",
+                    "/path/yt-dlp",
+                    "/opt/homebrew/bin/yt-dlp",
+                    "/usr/local/bin/yt-dlp",
+                ],
+            )
+
     def test_selects_native_standalone_assets_per_platform(self):
         with patch.object(app_tools.sys, "platform", "win32"):
             self.assertEqual(app_tools.get_yt_dlp_asset_name(), "yt-dlp.exe")

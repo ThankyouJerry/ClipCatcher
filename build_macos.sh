@@ -5,22 +5,22 @@ set -euo pipefail
 
 echo "🔨 Building ClipCatcher for macOS..."
 
-# Clean previous builds
-echo "🧹 Cleaning previous builds..."
-rm -rf build dist
+BUILD_ROOT="$(mktemp -d)"
+trap 'rm -rf "$BUILD_ROOT"' EXIT
 
 # Build with PyInstaller
 echo "📦 Building application..."
-python3 -m PyInstaller build.spec
+python3 -m PyInstaller \
+    --distpath "$BUILD_ROOT/dist" \
+    --workpath "$BUILD_ROOT/build" \
+    build.spec
 
 # Desktop folders can reapply Finder metadata that invalidates code signing.
 # Stage the release bundle outside File Provider before signing and archiving.
-STAGING_DIR="$(mktemp -d)"
-trap 'rm -rf "$STAGING_DIR"' EXIT
-STAGED_APP="$STAGING_DIR/ClipCatcher.app"
+STAGED_APP="$BUILD_ROOT/ClipCatcher.app"
 
 echo "🔏 Preparing and verifying release bundle..."
-ditto --noextattr --noacl --norsrc dist/ClipCatcher.app "$STAGED_APP"
+ditto --noextattr --noacl --norsrc "$BUILD_ROOT/dist/ClipCatcher.app" "$STAGED_APP"
 xattr -cr "$STAGED_APP"
 find "$STAGED_APP" -type l -exec xattr -cs {} +
 codesign --force --deep --sign - "$STAGED_APP"
@@ -31,11 +31,10 @@ echo "🧪 Running packaged smoke test..."
 
 echo "🗜️ Creating release archive..."
 ditto -c -k --sequesterRsrc --keepParent \
-    "$STAGED_APP" dist/ClipCatcher-macOS.zip
+    "$STAGED_APP" "$BUILD_ROOT/ClipCatcher-macOS.zip"
 
-# The Desktop can reattach Finder metadata and invalidate a raw app bundle.
-# Keep only the verified archive as the release artifact.
-rm -rf dist/ClipCatcher.app dist/ClipCatcher
+mkdir -p dist
+mv "$BUILD_ROOT/ClipCatcher-macOS.zip" dist/ClipCatcher-macOS.zip
 
 echo "✅ Build successful!"
 echo "📦 Release archive: dist/ClipCatcher-macOS.zip"

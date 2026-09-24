@@ -11,7 +11,7 @@ import tempfile
 import asyncio
 from pathlib import Path
 from typing import Dict, Optional
-from PyQt6.QtCore import QObject, pyqtSignal, QThread
+from PyQt6.QtCore import QObject, pyqtSignal, QThread, QTimer
 import yt_dlp
 
 from core.dependency_check import resolve_yt_dlp_binary
@@ -582,6 +582,7 @@ class DownloadManager(QObject):
     def __init__(self):
         super().__init__()
         self.active_downloads: Dict[str, DownloadWorker] = {}
+        self._retired_downloads: Dict[str, DownloadWorker] = {}
     
     def start_download(
         self, 
@@ -618,10 +619,13 @@ class DownloadManager(QObject):
         """
         download_id = str(uuid.uuid4())
         
-        # Sanitize filename
-        safe_title = self._sanitize_filename(title)
-        filename_suffix = quality
-        filename = f"{safe_title}_{filename_suffix}"
+        # Keep each queue entry distinct and leave room for yt-dlp suffixes.
+        suffix = (
+            f"_{self._sanitize_filename(quality, 48)}"
+            f"_{self._sanitize_filename(video_id, 40)}_{download_id[:8]}"
+        )
+        safe_title = self._sanitize_filename(title, 220 - len(suffix.encode('utf-8')))
+        filename = f"{safe_title}{suffix}"
         output_path = str(Path(output_dir) / filename)
         
         # Create worker
@@ -638,6 +642,9 @@ class DownloadManager(QObject):
             format_selector=format_selector,
         )
         self.active_downloads[download_id] = worker
+        worker.finished.connect(
+            lambda did=download_id: self._release_retired_download(did)
+        )
         
         # NOTE: Worker is NOT started here. 
         # Caller must connect signals first and then call worker.start()
@@ -650,32 +657,31 @@ class DownloadManager(QObject):
         if not worker:
             return
 
-        worker.finished.connect(
-            lambda did=download_id: self.remove_download(did)
-        )
         worker.stop()
-        if not worker.isRunning():
-            self.remove_download(download_id)
+        self.remove_download(download_id)
     
     def get_worker(self, download_id: str) -> Optional[DownloadWorker]:
         """Get download worker by ID"""
         return self.active_downloads.get(download_id)
 
     def remove_download(self, download_id: str):
-        """Remove worker reference after completion/error/cancel."""
-        if download_id in self.active_downloads:
-            del self.active_downloads[download_id]
+        """Hide a worker now, but keep its QThread alive until it exits."""
+        worker = self.active_downloads.pop(download_id, None)
+        if worker is not None and worker.isRunning():
+            self._retired_downloads[download_id] = worker
+
+    def _release_retired_download(self, download_id: str):
+        worker = self._retired_downloads.get(download_id)
+        if worker is None:
+            return
+        if worker.isRunning():
+            QTimer.singleShot(10, lambda: self._release_retired_download(download_id))
+        else:
+            self._retired_downloads.pop(download_id, None)
     
     @staticmethod
-    def _sanitize_filename(filename: str) -> str:
+    def _sanitize_filename(filename: str, max_bytes: int = 200) -> str:
         """Sanitize filename to remove invalid characters"""
-        # Remove invalid characters
-        invalid_chars = '<>:"/\\|?*'
-        for char in invalid_chars:
-            filename = filename.replace(char, '_')
-        
-        # Limit length
-        if len(filename) > 200:
-            filename = filename[:200]
-        
-        return filename
+        filename = re.sub(r'[\x00-\x1f<>:"/\\|?*]', '_', str(filename))
+        filename = filename.encode('utf-8')[:max_bytes].decode('utf-8', errors='ignore')
+        return filename.rstrip(' .') or 'video'

@@ -4,13 +4,11 @@ External dependency detection helpers for yt-dlp and ffmpeg.
 from __future__ import annotations
 
 import os
-import shutil
 import subprocess
-import sys
 from dataclasses import dataclass
 from typing import List, Optional
 
-from core.app_tools import find_app_tool
+from core.app_tools import get_yt_dlp_binary_candidates
 from core.ffmpeg_utils import get_ffmpeg_binary
 
 
@@ -54,26 +52,8 @@ def is_yt_dlp_binary_usable(binary: Optional[str]) -> bool:
 
 
 def resolve_yt_dlp_binary() -> Optional[str]:
-    candidates: List[Optional[str]] = [
-        find_app_tool("yt-dlp"),
-        shutil.which("yt-dlp"),
-    ]
-    if sys.platform == "darwin":
-        candidates.extend(["/opt/homebrew/bin/yt-dlp", "/usr/local/bin/yt-dlp"])
-    elif sys.platform == "win32":
-        candidates.extend(
-            [
-                os.path.expandvars(
-                    r"%LOCALAPPDATA%\Microsoft\WinGet\Links\yt-dlp.exe"
-                ),
-                r"C:\yt-dlp\yt-dlp.exe",
-            ]
-        )
-    else:
-        candidates.extend(["/usr/local/bin/yt-dlp", "/usr/bin/yt-dlp"])
-
     checked = set()
-    for candidate in candidates:
+    for candidate in get_yt_dlp_binary_candidates():
         if not candidate or candidate in checked:
             continue
         checked.add(candidate)

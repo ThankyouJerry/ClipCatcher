@@ -2,6 +2,7 @@
 YouTube API - validated external yt-dlp metadata extraction with package fallback.
 """
 import json
+import math
 import subprocess
 from typing import Dict, List, Optional
 
@@ -126,38 +127,59 @@ class YouTubeAPI:
             f for f in formats
             if f.get('vcodec') and f.get('vcodec') != 'none'
             and f.get('ext') not in ('mhtml',)
-            and f.get('height')
+            and isinstance(f.get('height'), int)
+            and not isinstance(f.get('height'), bool)
+            and f['height'] > 0
         ]
 
-        # 표준 해상도 목록에서 실제로 있는 것만 추출
-        available_heights = sorted(
+        # Match the H.264 constraint used by build_final_cut_format_selector.
+        compatible_formats = [
+            f for f in video_formats if f['vcodec'].startswith('avc1')
+        ]
+        if video_formats and not compatible_formats:
+            raise RuntimeError(
+                "이 영상에서 Final Cut 호환 H.264 화질을 찾지 못했습니다. "
+                "yt-dlp를 업데이트한 뒤 다시 확인해주세요."
+            )
+        video_formats = compatible_formats
+        available = sorted(
             {f['height'] for f in video_formats},
             reverse=True
         )
-        standard = [4320, 2160, 1440, 1080, 720, 480, 360, 240, 144]
-        available = [h for h in standard if h in available_heights]
 
         if not available:
             return [{
                 'quality': 'best',
-                'label':   'Best',
+                'label':   '자동 선택 (다운로드 시 화질 결정)',
                 'url':     info.get('webpage_url', ''),
                 'height':  0,
-                'bitrate': 0,
             }]
 
         resolutions = []
         for h in available:
             # 해당 높이 포맷들 중 최고 bitrate
             matching = [f for f in video_formats if f['height'] == h]
-            bitrate = max((f.get('tbr') or 0 for f in matching), default=0)
+            reported_rates = [
+                f['tbr'] for f in matching
+                if isinstance(f.get('tbr'), (int, float))
+                and not isinstance(f['tbr'], bool)
+                and math.isfinite(f['tbr'])
+                and f['tbr'] > 0
+            ]
+            bitrate = max(reported_rates, default=0)
             label = f"{h}p" if h < 2160 else ("4K" if h == 2160 else f"{h}p")
+            widths = {f.get('width') for f in matching
+                      if isinstance(f.get('width'), int) and f['width'] > 0}
+            width = next(iter(widths)) if len(widths) == 1 else None
+            if h not in (4320, 2160, 1440, 1080, 720, 480, 360, 240, 144) and width:
+                label = f"{h}p ({width}×{h})"
             resolutions.append({
                 'quality':  f'{h}p',
                 'label':    label,
                 'url':      info.get('webpage_url', ''),
                 'height':   h,
-                'bitrate':  int(bitrate * 1000) if bitrate else 0,
+                **({'width': width} if width else {}),
+                **({'bitrate': int(bitrate * 1000)} if bitrate else {}),
             })
 
         return resolutions

@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import math
 from typing import Dict, List, Optional
 from urllib.parse import urlsplit
 
@@ -104,12 +105,19 @@ class ChzzkAPI:
     def _fallback_resolution(page_url: str) -> Dict:
         return {
             "quality": "best",
-            "label": "최고 화질",
+            "label": "자동 선택 (다운로드 시 화질 결정)",
             "url": page_url,
             "height": 0,
             "width": 0,
-            "bitrate": 0,
         }
+
+    @staticmethod
+    def _reported_bitrate(value: object) -> Dict[str, int]:
+        """Only expose a positive, finite source-reported bitrate in bits/s."""
+        if isinstance(value, (int, float)) and not isinstance(value, bool):
+            if math.isfinite(value) and value >= 1:
+                return {"bitrate": int(value)}
+        return {}
 
     async def fetch_vod_metadata(self, video_id: str, cookies: str = "") -> Dict:
         """Fetch metadata for a CHZZK VOD."""
@@ -272,7 +280,7 @@ class ChzzkAPI:
                             "url": stream_url,
                             "height": height,
                             "width": representation.get("width", 0),
-                            "bitrate": representation.get("bandwidth", 0),
+                            **self._reported_bitrate(representation.get("bandwidth")),
                         }
                     )
 
@@ -340,7 +348,7 @@ class ChzzkAPI:
                     "url": master_url,
                     "width": track.get("videoWidth", 0),
                     "height": track.get("videoHeight", 0),
-                    "bitrate": track.get("videoBitRate", 0),
+                    **self._reported_bitrate(track.get("videoBitRate")),
                 }
             )
         resolutions.sort(key=lambda item: item["height"], reverse=True)

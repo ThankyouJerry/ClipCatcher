@@ -12,7 +12,7 @@ import subprocess
 import sys
 import urllib.request
 from pathlib import Path
-from typing import Optional
+from typing import List, Optional
 from urllib.parse import urlsplit
 
 
@@ -50,6 +50,23 @@ def find_app_tool(name: str) -> Optional[str]:
     if candidate.is_file() and os.access(candidate, os.X_OK):
         return str(candidate)
     return None
+
+
+def get_yt_dlp_binary_candidates() -> List[Optional[str]]:
+    """Return app-owned and system yt-dlp locations in preference order."""
+    candidates: List[Optional[str]] = [find_app_tool("yt-dlp"), shutil.which("yt-dlp")]
+    if sys.platform == "darwin":
+        candidates.extend(["/opt/homebrew/bin/yt-dlp", "/usr/local/bin/yt-dlp"])
+    elif sys.platform == "win32":
+        candidates.extend(
+            [
+                os.path.expandvars(r"%LOCALAPPDATA%\Microsoft\WinGet\Links\yt-dlp.exe"),
+                r"C:\yt-dlp\yt-dlp.exe",
+            ]
+        )
+    else:
+        candidates.extend(["/usr/local/bin/yt-dlp", "/usr/bin/yt-dlp"])
+    return candidates
 
 
 def install_app_tool_from_path(name: str, source_path: str) -> Optional[str]:
