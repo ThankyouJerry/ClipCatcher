@@ -1,7 +1,32 @@
 import unittest
 from unittest.mock import patch
 
-from ui.main_window import YtDlpInstallWorker
+from core.dependency_check import ToolStatus
+from ui.main_window import YtDlpInstallWorker, YtDlpStatusWorker
+
+
+class YtDlpStatusWorkerTests(unittest.TestCase):
+    def test_returns_available_and_missing_status_without_installing(self):
+        for available in (True, False):
+            status = ToolStatus('yt-dlp', '/tmp/yt-dlp', available, '2026.09.23')
+            results = []
+            worker = YtDlpStatusWorker()
+            worker.completed.connect(results.append)
+            with patch('ui.main_window.check_yt_dlp', return_value=status), patch(
+                'ui.main_window.install_or_update_yt_dlp'
+            ) as install:
+                worker.run()
+            self.assertEqual(results, [status])
+            install.assert_not_called()
+
+    def test_probe_exception_becomes_unavailable_status(self):
+        results = []
+        worker = YtDlpStatusWorker()
+        worker.completed.connect(results.append)
+        with patch('ui.main_window.check_yt_dlp', side_effect=RuntimeError('probe failed')):
+            worker.run()
+        self.assertFalse(results[0].available)
+        self.assertEqual(results[0].error, 'probe failed')
 
 
 class YtDlpInstallWorkerTests(unittest.TestCase):

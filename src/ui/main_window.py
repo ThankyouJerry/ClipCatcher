@@ -30,6 +30,20 @@ from core.dependency_check import check_yt_dlp, get_missing_dependencies
 from core.app_tools import find_app_tool, get_app_bin_dir, install_or_update_yt_dlp
 
 
+class YtDlpStatusWorker(QThread):
+    """Probe the local installation without blocking the GUI."""
+
+    completed = pyqtSignal(object)
+
+    def run(self):
+        from core.dependency_check import ToolStatus
+        try:
+            status = check_yt_dlp()
+        except Exception as exc:
+            status = ToolStatus("yt-dlp", None, False, error=str(exc))
+        self.completed.emit(status)
+
+
 class YtDlpInstallWorker(QThread):
     """Install the app-owned yt-dlp without blocking the GUI event loop."""
 
@@ -58,6 +72,8 @@ class MainWindow(QMainWindow):
         self.running_download_ids = set()
         self.thumbnail_loaders = []
         self.ytdlp_install_worker = None
+        self.ytdlp_status_worker = None
+        self._ytdlp_status_result = None
         self._closing = False
         self._allow_close = False
         self._batch_active = False
@@ -357,6 +373,10 @@ class MainWindow(QMainWindow):
         about_action = QAction("정보", self)
         about_action.triggered.connect(self._show_about)
         help_menu.addAction(about_action)
+
+        self.ytdlp_status_action = QAction("yt-dlp 상태 확인", self)
+        self.ytdlp_status_action.triggered.connect(self._check_ytdlp_status)
+        help_menu.addAction(self.ytdlp_status_action)
 
         install_ytdlp_action = QAction("yt-dlp 설치/업데이트", self)
         install_ytdlp_action.triggered.connect(self._install_or_update_ytdlp)
@@ -1178,8 +1198,55 @@ class MainWindow(QMainWindow):
         if response == QMessageBox.StandardButton.Yes:
             self._install_or_update_ytdlp()
 
+    def _check_ytdlp_status(self):
+        if self.ytdlp_status_worker is not None:
+            return
+        if self.ytdlp_install_worker is not None:
+            QMessageBox.information(self, "yt-dlp 상태 확인", "설치/업데이트가 끝난 뒤 다시 확인해주세요.")
+            return
+        worker = YtDlpStatusWorker(self)
+        self.ytdlp_status_worker = worker
+        self.ytdlp_status_action.setEnabled(False)
+        worker.completed.connect(self._on_ytdlp_status_result)
+        worker.finished.connect(self._on_ytdlp_status_finished)
+        worker.start()
+
+    def _on_ytdlp_status_result(self, status):
+        self._ytdlp_status_result = status
+
+    def _on_ytdlp_status_finished(self):
+        worker = self.ytdlp_status_worker
+        self.ytdlp_status_worker = None
+        if worker:
+            worker.deleteLater()
+        self.ytdlp_status_action.setEnabled(True)
+        status = self._ytdlp_status_result
+        self._ytdlp_status_result = None
+        if status is None or self._closing:
+            return
+        box = QMessageBox(self)
+        box.setWindowTitle("yt-dlp 상태 확인")
+        box.setTextFormat(Qt.TextFormat.PlainText)
+        box.setText("사용 가능" if status.available else "사용 가능한 yt-dlp를 확인하지 못했습니다.")
+        box.setInformativeText(
+            f"버전: {status.version or '확인 불가'}\n"
+            f"경로: {status.binary or '찾지 못함'}\n\n"
+            "로컬 설치 상태 검사입니다. 최신 버전 여부나 특정 영상의 다운로드 가능 여부를 보장하지 않습니다.\n"
+            "업데이트는 도움말의 'yt-dlp 설치/업데이트'를 이용해주세요."
+        )
+        if status.error:
+            box.setDetailedText(status.error)
+        retry = box.addButton("다시 확인", QMessageBox.ButtonRole.ActionRole)
+        box.addButton(QMessageBox.StandardButton.Close)
+        box.exec()
+        if box.clickedButton() == retry:
+            self._check_ytdlp_status()
+
     def _install_or_update_ytdlp(self):
         """Install or update yt-dlp in ClipCatcher's app-owned bin directory."""
+        if self.ytdlp_status_worker is not None:
+            QMessageBox.information(self, "yt-dlp 상태 확인 중", "상태 확인이 끝난 뒤 설치/업데이트해주세요.")
+            return
         if self.ytdlp_install_worker and self.ytdlp_install_worker.isRunning():
             self.statusBar().showMessage("yt-dlp 설치/업데이트가 이미 진행 중입니다.", 3000)
             return
@@ -1216,6 +1283,10 @@ class MainWindow(QMainWindow):
             worker.deleteLater()
 
     def closeEvent(self, event):
+        if self.ytdlp_status_worker is not None:
+            QMessageBox.information(self, "yt-dlp 상태 확인 중", "상태 확인이 끝난 뒤 앱을 종료해주세요.")
+            event.ignore()
+            return
         if self._allow_close:
             super().closeEvent(event)
             return

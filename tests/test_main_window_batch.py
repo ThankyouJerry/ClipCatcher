@@ -82,6 +82,25 @@ class MainWindowBatchTests(unittest.TestCase):
             ["a", "b", "c"],
         )
 
+    def test_status_check_menu_starts_only_one_worker(self):
+        self.assertEqual(self.window.ytdlp_status_action.text(), "yt-dlp 상태 확인")
+        with patch("ui.main_window.YtDlpStatusWorker") as worker_class:
+            self.window.ytdlp_status_action.trigger()
+            self.window._check_ytdlp_status()
+            worker_class.assert_called_once_with(self.window)
+            worker_class.return_value.start.assert_called_once()
+            self.assertFalse(self.window.ytdlp_status_action.isEnabled())
+        self.window._on_ytdlp_status_finished()
+        self.assertTrue(self.window.ytdlp_status_action.isEnabled())
+
+    def test_close_is_blocked_during_status_check(self):
+        self.window.ytdlp_status_worker = object()
+        event = QCloseEvent()
+        with patch("ui.main_window.QMessageBox.information"):
+            self.window.closeEvent(event)
+        self.assertFalse(event.isAccepted())
+        self.window.ytdlp_status_worker = None
+
     def test_input_modes_keep_each_field_and_hide_single_file_details(self):
         self.window.url_input.setText("https://chzzk.naver.com/video/100")
         self.window.batch_mode_radio.setChecked(True)
