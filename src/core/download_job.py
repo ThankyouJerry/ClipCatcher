@@ -88,6 +88,7 @@ class DownloadJob:
         self.should_stop = False
         self.cookie_file = None
         self.process: Optional[subprocess.Popen] = None
+        self._stopping_process: Optional[subprocess.Popen] = None
     
     def run(self):
         """Run the download"""
@@ -99,6 +100,9 @@ class DownloadJob:
         except Exception as e:
             self.download_error.emit(str(e))
         finally:
+            # A parser, stream, or callback failure must not leave yt-dlp alive.
+            if self.process is not None and self.process.poll() is None:
+                self.stop()
             self.process = None
             self._cleanup_cookie_file()
     
@@ -534,6 +538,9 @@ class DownloadJob:
         process = self.process
         if not process or process.poll() is not None:
             return
+        if self._stopping_process is process:
+            return
+        self._stopping_process = process
 
         if os.name == "nt":
             def terminate_windows():
@@ -542,6 +549,8 @@ class DownloadJob:
                 except (OSError, subprocess.TimeoutExpired):
                     if process.poll() is None:
                         process.kill()
+                finally:
+                    self._reap_process(process)
             # taskkill may be slow; never run it on the GUI or signal thread.
             threading.Thread(target=terminate_windows, daemon=False).start()
             return
@@ -559,20 +568,32 @@ class DownloadJob:
         self._terminate_process_tree(process)
 
         def force_kill_if_needed():
-            threading.Event().wait(2)
-            if process_group is not None:
-                try:
-                    os.killpg(process_group, signal.SIGKILL)
-                except ProcessLookupError:
-                    pass
-            elif process.poll() is None:
-                try:
-                    self._terminate_process_tree(process, force=True)
-                except OSError:
-                    pass
+            try:
+                threading.Event().wait(2)
+                if process_group is not None:
+                    try:
+                        os.killpg(process_group, signal.SIGKILL)
+                    except ProcessLookupError:
+                        pass
+                elif process.poll() is None:
+                    try:
+                        self._terminate_process_tree(process, force=True)
+                    except OSError:
+                        pass
+            finally:
+                self._reap_process(process)
 
         # Keep the CLI alive until its child-process cleanup has completed.
         threading.Thread(target=force_kill_if_needed, daemon=False).start()
+
+    @staticmethod
+    def _reap_process(process):
+        """Reap a cancelled child off the GUI/signal thread."""
+        try:
+            process.wait(timeout=3)
+        except subprocess.TimeoutExpired:
+            process.kill()
+            process.wait(timeout=3)
 
     @staticmethod
     def _terminate_process_tree(process: subprocess.Popen, force: bool = False):

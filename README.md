@@ -188,5 +188,6 @@ macOS/Linux는 위 POSIX 명령을 사용합니다. 가상 환경을 활성화�
 
 - Linux Python 3.12: 전체 회귀 테스트, Qt 미설치 환경의 CLI 테스트, `check`/`--smoke` 실행을 확인했습니다.
 - 실제 FFmpeg로 만든 1초짜리 로컬 테스트 영상을 yt-dlp로 저장하고 FFprobe로 길이와 최종 경로를 검증합니다. 외부 VOD 다운로드 검증과는 별개입니다.
+- `6d81aba`의 [첫 크로스플랫폼 CI 실행](https://github.com/ThankyouJerry/ClipCatcher/actions/runs/39124900070)에서 9개 작업이 모두 통과했습니다. 후속 변경은 해당 커밋의 Actions 결과를 확인하세요.
 - Windows·macOS·Linux의 Python 3.10/3.12 headless 테스트와 세 운영체제의 GUI 회귀 테스트를 GitHub Actions 매트릭스로 구성했습니다. 각 실행의 성공 여부는 [Actions](https://github.com/ThankyouJerry/ClipCatcher/actions/workflows/headless-tests.yml)에서 확인하세요. CI 구성 자체가 실행 성공을 의미하지는 않습니다.
 - 개발 클라우드에서 공개 CHZZK API 조회는 DNS 이름 해석 실패로 완료하지 못했습니다. 실제 CHZZK/YouTube 미디어 다운로드, 플랫폼별 설치 파일 및 배포 검증은 아직 완료하지 않았습니다.
