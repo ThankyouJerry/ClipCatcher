@@ -29,7 +29,9 @@ def get_app_support_dir() -> Path:
     if sys.platform == "win32":
         base = os.environ.get("LOCALAPPDATA") or str(Path.home() / "AppData" / "Local")
         return Path(base) / "ClipCatcher"
-    return Path.home() / ".local" / "share" / "ClipCatcher"
+    data_home = os.environ.get("XDG_DATA_HOME", "")
+    base = Path(data_home) if Path(data_home).is_absolute() else Path.home() / ".local" / "share"
+    return base / "ClipCatcher"
 
 
 def get_app_bin_dir(create: bool = True) -> Path:

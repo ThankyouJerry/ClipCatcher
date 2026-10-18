@@ -31,7 +31,7 @@ class DownloadCancellationTests(unittest.TestCase):
             "/tmp/clipcatcher-test",
         )
         with patch(
-            "core.downloader.resolve_yt_dlp_binary",
+            "core.download_job.resolve_yt_dlp_binary",
             return_value="/tmp/yt-dlp",
         ), patch.object(
             worker,

@@ -24,11 +24,7 @@ class YtDlpResolutionTests(unittest.TestCase):
                 "broken-yt-dlp",
                 "#!/missing/python\n",
             )
-            working = self._make_executable(
-                directory,
-                "working-yt-dlp",
-                "#!/bin/sh\necho 2026.07.04\n",
-            )
+            working = sys.executable
 
             with patch.object(
                 dependency_check,
@@ -42,9 +38,7 @@ class YtDlpResolutionTests(unittest.TestCase):
 
     def test_system_binary_counts_as_installed_without_app_binary(self):
         with tempfile.TemporaryDirectory() as temp_dir:
-            working = self._make_executable(
-                Path(temp_dir), "yt-dlp", "#!/bin/sh\necho 2026.07.04\n"
-            )
+            working = sys.executable
             with patch.object(
                 dependency_check,
                 "get_yt_dlp_binary_candidates",
@@ -66,6 +60,7 @@ class YtDlpResolutionTests(unittest.TestCase):
         self.assertEqual(status.binary, "bundled Python package")
         self.assertEqual(status.version, "2026.07.04")
 
+    @unittest.skipIf(os.name == "nt", "POSIX executable mode bits")
     def test_rejects_non_executable_candidate(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             path = Path(temp_dir) / "yt-dlp"
