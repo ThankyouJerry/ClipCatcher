@@ -10,7 +10,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 
 
 
-APP_VERSION = "2.0.11"
+APP_VERSION = "2.0.12"
 
 
 def run_smoke_check() -> int:
@@ -27,8 +27,64 @@ def run_smoke_check() -> int:
     return 0
 
 
+
+def run_gui_smoke_check() -> int:
+    """Construct the native GUI offscreen using disposable config and no network."""
+    import os
+    import tempfile
+    from copy import deepcopy
+
+    os.environ["QT_QPA_PLATFORM"] = "offscreen"
+    from PyQt6.QtCore import QTimer
+    from PyQt6.QtWidgets import QApplication
+    from qasync import QEventLoop
+    from core.config import Config
+    from ui.main_window import MainWindow
+    from ui.styles import get_stylesheet
+
+    class SmokeWindow(MainWindow):
+        def _show_dependency_guide_if_needed(self):
+            pass
+
+        def _show_ytdlp_install_prompt_if_needed(self):
+            pass
+
+    with tempfile.TemporaryDirectory() as temp:
+        # Never load, migrate, chmod, or save the user's real configuration.
+        config = Config.__new__(Config)
+        config.config_dir = Path(temp)
+        config.config_file = Path(temp) / "config.json"
+        config.legacy_config_file = Path(temp) / "legacy.json"
+        config.config = deepcopy(Config.DEFAULT_CONFIG)
+        config.config["download_path"] = str(Path(temp) / "downloads")
+        app = QApplication([sys.argv[0]])
+        app.setApplicationVersion(APP_VERSION)
+        app.setStyleSheet(get_stylesheet())
+        loop = QEventLoop(app)
+        asyncio.set_event_loop(loop)
+        window = SmokeWindow(config)
+        window.show()
+        QTimer.singleShot(100, app.quit)
+        with loop:
+            loop.run_forever()
+        window.close()
+        asyncio.set_event_loop(None)
+    print("GUI_SMOKE_OK")
+    return 0
+
+
 def main():
     """Main application entry point"""
+    if len(sys.argv) > 1 and sys.argv[1] == "--run-yt-dlp":
+        # A frozen executable is not a Python interpreter: `-m yt_dlp`
+        # would restart ClipCatcher. Dispatch before importing any GUI modules.
+        import yt_dlp
+        yt_dlp.main(sys.argv[2:])
+        return 0
+
+    if "--smoke-gui" in sys.argv:
+        return run_gui_smoke_check()
+
     if "--smoke" in sys.argv:
         return run_smoke_check()
 

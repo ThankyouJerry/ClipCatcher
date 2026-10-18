@@ -190,7 +190,9 @@ class DownloadJob:
             self._run_ytdlp_binary_download()
         elif self.use_subprocess:
             # CLI cancellation must include package-backed FFmpeg subprocesses.
-            self._run_ytdlp_binary_download([sys.executable, "-m", "yt_dlp"])
+            prefix = ([sys.executable, "--run-yt-dlp"] if getattr(sys, "frozen", False)
+                      else [sys.executable, "-m", "yt_dlp"])
+            self._run_ytdlp_binary_download(prefix)
         else:
             self._run_ytdlp_package_download()
 
