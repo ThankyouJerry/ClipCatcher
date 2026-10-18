@@ -8,15 +8,17 @@ on:
 permissions:
   contents: read
 concurrency:
-  group: native-release-${{ github.ref }}
+  group: native-release-${{ github.ref }}-${{ github.event_name == 'pull_request' && github.sha || 'release' }}
   cancel-in-progress: false
 jobs:
   windows:
+    timeout-minutes: 30
     runs-on: windows-latest
     env:
       QT_QPA_PLATFORM: offscreen
     steps:
       - uses: actions/checkout@v4
+        timeout-minutes: 5
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
@@ -38,11 +40,13 @@ jobs:
           path: ClipCatcher-Windows.zip
           if-no-files-found: error
   macos:
+    timeout-minutes: 30
     runs-on: macos-14
     env:
       QT_QPA_PLATFORM: offscreen
     steps:
       - uses: actions/checkout@v4
+        timeout-minutes: 5
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
@@ -58,9 +62,11 @@ jobs:
           path: dist/ClipCatcher-macOS.zip
           if-no-files-found: error
   linux:
+    timeout-minutes: 30
     runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v4
+        timeout-minutes: 5
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
@@ -87,6 +93,7 @@ jobs:
       contents: write
     steps:
       - uses: actions/checkout@v4
+        timeout-minutes: 5
       - uses: actions/download-artifact@v4
         with:
           pattern: ClipCatcher-*
