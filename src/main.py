@@ -8,12 +8,6 @@ from pathlib import Path
 # Add src directory to path
 sys.path.insert(0, str(Path(__file__).parent))
 
-from PyQt6.QtWidgets import QApplication
-from qasync import QEventLoop
-
-from ui.main_window import MainWindow
-from ui.styles import get_stylesheet
-from core.config import Config
 
 
 APP_VERSION = "2.0.11"
@@ -37,6 +31,16 @@ def main():
     """Main application entry point"""
     if "--smoke" in sys.argv:
         return run_smoke_check()
+
+    if len(sys.argv) > 1 and sys.argv[1] == "--cli":
+        from cli import main as cli_main
+        return cli_main(sys.argv[2:])
+
+    from PyQt6.QtWidgets import QApplication
+    from qasync import QEventLoop
+    from ui.main_window import MainWindow
+    from ui.styles import get_stylesheet
+    from core.config import Config
 
     # Create application
     app = QApplication(sys.argv)

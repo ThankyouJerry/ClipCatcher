@@ -125,3 +125,68 @@ ClipCatcher는 사용자가 접근 가능한 영상의 저장을 돕는 도구�
 ## License
 
 MIT License
+
+## Cross-platform CLI / Linux Cloud (개발 버전)
+
+Windows·macOS·Linux에서 같은 다운로드 코어를 사용합니다. GUI에도 동일한 파일명 처리·최종 파일 경로 추적·POSIX 프로세스 정리 개선이 적용됩니다. CLI는 디스플레이나 PyQt6 없이 치지직 공개 VOD/클립과 YouTube 영상을 처리합니다.
+Python 3.10 이상과 시스템 FFmpeg/FFprobe가 필요합니다. 현재 Linux 실행 파일 배포는 없으며 소스로 실행합니다.
+
+```bash
+# Ubuntu / Debian (관리자 권한이 있는 환경)
+sudo apt-get update && sudo apt-get install -y python3-venv ffmpeg
+python3 -m venv .venv
+source .venv/bin/activate
+python -m pip install -r requirements-headless.txt
+python src/main.py --cli check
+python src/main.py --cli info 'https://chzzk.naver.com/video/14046440'
+# 명시적으로 구간을 지정하면 전체 VOD 다운로드를 피할 수 있습니다.
+python src/main.py --cli download 'https://chzzk.naver.com/video/14046440' \
+  --start 00:01:00 --end 00:01:10 --quality 720p --output-dir ./downloads
+```
+
+- `python src/cli.py ...`로도 같은 명령을 사용할 수 있습니다.
+- `check`: 로컬 yt-dlp/FFmpeg 상태를 JSON으로 출력합니다. 설치/업데이트나 영상 서비스 요청을 하지 않습니다.
+- `info`: 공개 메타데이터를 조회하고 제목, 길이, 화질을 JSON으로 출력합니다. 미디어를 저장하지 않습니다.
+- `download`: 영상 하나를 저장합니다. 시간 옵션을 생략하면 전체 영상을 다운로드합니다. `--start`만 지정하면 끝까지 다운로드합니다.
+- 시간은 초, `MM:SS`, `HH:MM:SS` 형식이며 소수 초도 지원합니다. 종료 시각은 시작 시각보다 커야 합니다.
+- `--quality 720p`는 최대 높이입니다. 해당 높이 이하의 확인 가능한 화질이 없으면 오류로 종료합니다. 생략하면 확인된 최고 화질을 선택합니다. YouTube는 기존 앱과 같은 H.264/AAC 호환 형식을 사용합니다.
+- 기본 저장 위치는 실행한 디렉터리의 `downloads/`입니다. `--output-dir`로 쓰기 가능한 절대/상대 경로를 선택하세요. 파일명에 고유 접미사를 붙여 같은 영상의 반복 작업을 구분합니다.
+- 성공 시 표준 출력은 최종 파일 경로, 진행/진단 메시지는 표준 오류입니다. 종료 코드는 성공 `0`, 실행 실패 `1`, 잘못된 인수 `2`, 중단 `130`입니다. Ctrl+C와 SIGTERM은 다운로드 및 자식 프로세스 정리를 요청합니다.
+- CLI는 GUI의 저장된 설정/쿠키를 읽지 않습니다. 로그인, 성인 인증, 회원 전용 콘텐츠는 지원 범위 밖입니다. 서비스 차단/네트워크 제한/접근 권한 문제를 우회하지 않습니다.
+- 일반 VOD·클립·YouTube는 기존 yt-dlp 경로, 변환 전 CHZZK VOD는 기존 수동 HLS 다운로드 경로를 공유합니다. 원본의 키프레임/서버/형식에 따라 구간 요청에도 추가 미디어 전송 및 재인코딩이 필요할 수 있습니다.
+- GUI는 기존 `requirements.txt` 설치와 `python src/main.py` 실행 방식을 유지합니다. Linux 앱 전용 도구 폴더는 절대 경로인 `$XDG_DATA_HOME/ClipCatcher/bin`, 미설정 시 `~/.local/share/ClipCatcher/bin`입니다.
+
+### 테스트
+
+```bash
+# Qt 없는 환경에서 실행 가능한 오프라인 테스트
+python -m pip install pytest
+python -m pytest -q tests/test_cli.py tests/test_headless_regressions.py tests/test_headless_integration.py \
+  tests/test_url_utils.py tests/test_segment_downloader.py \
+  tests/test_app_tools.py tests/test_dependency_check.py
+
+# GUI 의존성이 설치된 개발 환경: 기존 UI 회귀 테스트도 포함
+QT_QPA_PLATFORM=offscreen python -m pytest -q
+```
+
+테스트는 실제 외부 영상 다운로드 성공을 보증하지 않습니다. 사이트별 접근과 포맷은 변경될 수 있습니다.
+
+### Windows / macOS CLI
+
+macOS는 `brew install ffmpeg`, Windows는 FFmpeg/FFprobe를 설치하고 PATH에 등록한 뒤 가상 환경을 만드세요. Windows PowerShell에서는 다음처럼 활성화 없이 실행할 수 있습니다.
+
+```powershell
+py -3 -m venv .venv
+.\.venv\Scripts\python.exe -m pip install -r requirements-headless.txt
+.\.venv\Scripts\python.exe src/main.py --cli check
+.\.venv\Scripts\python.exe src/main.py --cli info 'https://chzzk.naver.com/video/14046440'
+```
+
+macOS/Linux는 위 POSIX 명령을 사용합니다. 가상 환경을 활성화하지 않아도 CLI는 필요 시 현재 Python의 `-m yt_dlp`를 별도 프로세스로 실행하여 중단 처리를 유지합니다. GUI 실행 방식과 기존 설정 위치는 변경하지 않습니다.
+
+### 검증 범위
+
+- Linux Python 3.12: 전체 회귀 테스트, Qt 미설치 환경의 CLI 테스트, `check`/`--smoke` 실행을 확인했습니다.
+- 실제 FFmpeg로 만든 1초짜리 로컬 테스트 영상을 yt-dlp로 저장하고 FFprobe로 길이와 최종 경로를 검증합니다. 외부 VOD 다운로드 검증과는 별개입니다.
+- Windows·macOS·Linux의 Python 3.10/3.12 headless 테스트와 세 운영체제의 GUI 회귀 테스트를 GitHub Actions 매트릭스로 구성했습니다. 각 실행의 성공 여부는 [Actions](https://github.com/ThankyouJerry/ClipCatcher/actions/workflows/headless-tests.yml)에서 확인하세요. CI 구성 자체가 실행 성공을 의미하지는 않습니다.
+- 개발 클라우드에서 공개 CHZZK API 조회는 DNS 이름 해석 실패로 완료하지 못했습니다. 실제 CHZZK/YouTube 미디어 다운로드, 플랫폼별 설치 파일 및 배포 검증은 아직 완료하지 않았습니다.
