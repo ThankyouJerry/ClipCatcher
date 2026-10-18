@@ -1,3 +1,17 @@
+# Current release verification: v2.0.13 (2026-10-18)
+
+Release source: `43f6006d3b959265297ed3c8747176ae13e7fe52`.
+
+- [Native package workflow](https://github.com/ThankyouJerry/ClipCatcher/actions/runs/39129088766): all four jobs passed, including Windows/macOS/Linux package checks and release assembly.
+- [Cross-platform regression workflow](https://github.com/ThankyouJerry/ClipCatcher/actions/runs/39129088598): all nine jobs passed.
+- [Published v2.0.13 assets](https://github.com/ThankyouJerry/ClipCatcher/releases/tag/v2.0.13): Windows x64 GUI, macOS Apple Silicon GUI, Linux x86_64 CLI, and SHA256SUMS.
+- README screenshots show the actual released Qt UI with explicitly synthetic sample data. They are not evidence of live downloads.
+- Package checks do not guarantee downloads from every external video or network. Historical live CHZZK checks below retain their original scope.
+
+## Historical build records
+
+Everything below records the state at the time of each experiment. Statements about pending builds or unpublished packages are historical and are superseded by the current release verification above.
+
 # v2.0.12 packaging validation (2026-10-18)
 
 - Local Linux headless tests: 56 tests and 11 subtests passed.

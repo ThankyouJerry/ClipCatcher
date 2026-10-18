@@ -27,9 +27,14 @@ ClipCatcher는 기존 `chzzkdownloader`를 발전시킨 후속작으로, 더 나
 
 ## Latest Update
 
-`v2.0.12` 릴리스 후보에는 `도움말 → yt-dlp 상태 확인`, Linux/클라우드용 CLI, 다운로드 취소와 프로세스 정리 개선이 포함됩니다. 상태 메뉴에서 현재 yt-dlp 버전·경로를 확인할 수 있으며 설치나 업데이트를 자동으로 수행하지 않습니다.
+[`v2.0.13`](https://github.com/ThankyouJerry/ClipCatcher/releases/tag/v2.0.13)이 공개되었습니다.
 
-배포본은 아래 [Releases](https://github.com/ThankyouJerry/ClipCatcher/releases)에서 버전을 확인해 받으세요. 새 버전은 네이티브 3종 빌드와 패키지 검사를 모두 통과한 뒤 게시됩니다. 기존 설정과 다운로드한 영상은 유지됩니다.
+- 차분한 청록색 테마와 읽기 쉬운 상태 안내, 키보드 포커스 표시를 적용했습니다.
+- URL 입력 순서와 빈 다운로드 목록 안내를 추가하고 완료·실패 메시지를 명확히 했습니다.
+- 잘못된 설정 JSON 값과 지원하지 않는 필드 형식을 안전한 기본값으로 복구합니다.
+- v2.0.12의 Linux/클라우드 CLI, 기존 HTTPS 프록시 지원, 다운로드 취소·프로세스 정리 개선을 포함합니다.
+
+Windows x64 GUI, macOS Apple Silicon GUI, Linux x86_64 CLI 패키지와 `SHA256SUMS`를 릴리스 페이지에서 받을 수 있습니다. 기존 다운로드 파일은 유지됩니다. 플랫폼별 실행 방법과 서명 제한은 아래 Download 항목을 확인하세요.
 
 `v2.0.10`에서는 변경된 치지직 클립 API에 맞춰 클립 정보·화질 조회와 다운로드를 복구했습니다. 다운로드 시작 직전에 NAVER 재생 API에서 만료되지 않은 클립 주소를 다시 받아 대기열에서도 안정적으로 처리합니다. 치지직 VOD/클립과 YouTube 링크를 실제 호스트 기준으로 검증하고, 메타데이터 요청에 시간 제한·재시도·응답 크기 제한을 적용했습니다. 앱에서 설치하는 `yt-dlp`는 공식 SHA-256 체크섬과 실행 가능 여부를 확인한 뒤에만 기존 파일을 교체합니다.
 
@@ -46,23 +51,17 @@ ClipCatcher는 기존 `chzzkdownloader`를 발전시킨 후속작으로, 더 나
 
 ## Screenshots
 
-![ClipCatcher main screen](assets/screenshots/01-main.png)
+v2.0.13 소스의 실제 Qt 화면입니다. 화면 설명을 위한 샘플 제목·상태·진행률을 사용했으며, 실제 영상 조회나 다운로드 성공을 증명하는 화면은 아닙니다. 운영체제에 따라 글꼴과 창 장식은 다를 수 있습니다.
 
-| 진행중 | 완료 |
+![ClipCatcher v2.0.13 청록색 테마와 단일 영상·시간 범위 선택 샘플](assets/screenshots/v2.0.13-main.png)
+
+### 여러 파일 입력
+
+![ClipCatcher v2.0.13 여러 파일 입력 샘플](assets/screenshots/v2.0.13-batch.png)
+
+| 저장 완료 안내 (샘플) | 실패 안내 (샘플) |
 | --- | --- |
-| ![ClipCatcher active downloads tab](assets/screenshots/02-active-tab.png) | ![ClipCatcher completed downloads tab](assets/screenshots/03-completed-tab.png) |
-
-| 실패 |
-| --- |
-| ![ClipCatcher failed downloads tab](assets/screenshots/04-failed-tab.png) |
-
-### 실제 링크 정보 조회 예시
-
-아래 화면은 예시 치지직 VOD 링크를 앱에 입력한 뒤 `정보 가져오기`로 영상 정보와 화질 목록을 불러온 상태입니다.
-
-| https://chzzk.naver.com/video/14046440 | https://chzzk.naver.com/video/14056205 |
-| --- | --- |
-| ![ClipCatcher demo for CHZZK video 14046440](assets/screenshots/demo-14046440.png) | ![ClipCatcher demo for CHZZK video 14056205](assets/screenshots/demo-14056205.png) |
+| ![ClipCatcher v2.0.13 완료 탭 샘플](assets/screenshots/v2.0.13-completed.png) | ![ClipCatcher v2.0.13 실패 탭 샘플](assets/screenshots/v2.0.13-failed.png) |
 
 ## Project Position
 
@@ -131,10 +130,10 @@ ClipCatcher는 사용자가 접근 가능한 영상의 저장을 돕는 도구�
 
 MIT License
 
-## Cross-platform CLI / Linux Cloud (개발 버전)
+## Cross-platform CLI / Linux Cloud
 
 Windows·macOS·Linux에서 같은 다운로드 코어를 사용합니다. GUI에도 동일한 파일명 처리·최종 파일 경로 추적·POSIX 프로세스 정리 개선이 적용됩니다. CLI는 디스플레이나 PyQt6 없이 치지직 공개 VOD/클립과 YouTube 영상을 처리합니다.
-Python 3.10 이상과 시스템 FFmpeg/FFprobe가 필요합니다. 현재 Linux 실행 파일 배포는 없으며 소스로 실행합니다.
+Linux x86_64 실행 파일은 [v2.0.13 릴리스](https://github.com/ThankyouJerry/ClipCatcher/releases/tag/v2.0.13)에서 받을 수 있습니다. 아래는 소스 실행 방법으로, Python 3.10 이상과 시스템 FFmpeg가 필요합니다. FFprobe는 추가 검증용 선택 도구입니다. 번들 패키지 실행 방법은 [Linux 패키지 안내](docs/LINUX_PACKAGE.md)를 참고하세요.
 
 ```bash
 # Ubuntu / Debian (관리자 권한이 있는 환경)
@@ -196,8 +195,12 @@ macOS/Linux는 위 POSIX 명령을 사용합니다. 가상 환경을 활성화�
 - 실제 FFmpeg로 만든 1초짜리 로컬 테스트 영상을 yt-dlp로 저장하고 FFprobe로 길이와 최종 경로를 검증합니다. 외부 VOD 다운로드 검증과는 별개입니다.
 - `6d81aba`의 [첫 크로스플랫폼 CI 실행](https://github.com/ThankyouJerry/ClipCatcher/actions/runs/39124900070)에서 9개 작업이 모두 통과했습니다. 후속 변경은 해당 커밋의 Actions 결과를 확인하세요.
 - Windows·macOS·Linux의 Python 3.10/3.12 headless 테스트와 세 운영체제의 GUI 회귀 테스트를 GitHub Actions 매트릭스로 구성했습니다. 각 실행의 성공 여부는 [Actions](https://github.com/ThankyouJerry/ClipCatcher/actions/workflows/headless-tests.yml)에서 확인하세요. CI 구성 자체가 실행 성공을 의미하지는 않습니다.
-- 개발 Linux 클라우드의 초기 직접 연결은 DNS 이름 해석에 실패했습니다. 후속 로컬 수정에서 기존 HTTPS 프록시 설정을 적용한 공개 CHZZK API 조회가 성공했습니다. 외부 영상과 설치 파일의 검증 결과는 아래 후속 검증 기록을 확인하세요. 실제 YouTube 다운로드와 새 설치 파일의 공개 배포는 아직 완료하지 않았습니다.
+- 개발 Linux 클라우드의 초기 직접 연결은 DNS 이름 해석에 실패했습니다. 후속 로컬 수정에서 기존 HTTPS 프록시 설정을 적용한 공개 CHZZK API 조회가 성공했습니다. 외부 영상과 설치 파일의 검증 결과는 아래 후속 검증 기록을 확인하세요. 이 기록은 초기 검증 당시의 상태입니다. 현재 공개 패키지는 위 릴리스 링크를 참고하세요. 이 기록만으로 실제 YouTube 다운로드 성공을 주장하지 않습니다.
 - 실제 macOS에서 `6d81aba`의 `check`·`--smoke`와 전체 94개 테스트(+11 subtests)가 통과했습니다. 공개 CHZZK VOD `15733051`의 `04:38:15–04:38:25` 구간만 쿠키 없이 내려받아 10.000초, H.264 852×480, AAC 48 kHz 스테레오, 2,031,000바이트를 확인했습니다. 전체 파일 디코딩 오류 없음, 프레임 확인 및 ffplay 재생/자동 종료도 검증했습니다. 전체 VOD를 다운로드한 검증은 아닙니다.
 - 후속 프로세스 정리 수정 `29b0fcd`는 같은 Mac에서 취소·프로세스·스레드 관련 14개 테스트를 다시 통과했습니다. 해당 커밋에서 전체 테스트 또는 외부 미디어 다운로드를 Mac에서 반복 실행했다는 의미는 아닙니다.
 - 후속 로컬 수정 `9d63de9`에서는 Linux 클라우드에서 기존 HTTPS 프록시 설정을 적용한 실제 CLI 다운로드가 성공했습니다. 공개 CHZZK VOD `15733051`의 `04:38:15–04:38:25`, 최대 480p를 기존 수동 HLS 경로로 처리해 겹치는 7개 세그먼트만 내려받았습니다. 시스템 FFmpeg 7.1.5로 10.000초 H.264 852×480 + AAC 파일(2,031,644바이트)을 생성했으며 전체 파일 디코딩 검사가 통과했습니다. 별도의 직접 yt-dlp 실험에서 발생한 원격 HLS 오류는 이 앱 경로의 결과와 구분합니다.
-- 같은 후속 로컬 소스에서 전체 110개 테스트(+11 subtests), Qt 미설치 환경의 66개 테스트(+11 subtests)가 통과했습니다. 재빌드한 Linux x86_64 CLI 실행 파일도 의존성 확인, 번들 yt-dlp의 로컬 HTTP 영상 다운로드, 번들 FFmpeg의 1초 AVI 변환을 통과했습니다. 이 최신 소스와 패키지는 아직 공개 배포되지 않았으며 새 Windows/macOS 설치 파일은 빌드·실행 검증 전입니다.
+- 같은 후속 로컬 소스에서 전체 110개 테스트(+11 subtests), Qt 미설치 환경의 66개 테스트(+11 subtests)가 통과했습니다. 재빌드한 Linux x86_64 CLI 실행 파일도 의존성 확인, 번들 yt-dlp의 로컬 HTTP 영상 다운로드, 번들 FFmpeg의 1초 AVI 변환을 통과했습니다. 이는 해당 수정 당시의 검증 기록입니다. 이후 v2.0.13의 Windows/macOS/Linux 네이티브 패키지 빌드와 smoke 검사가 통과했으며 세 패키지가 공개되었습니다. 패키지 검사는 모든 외부 영상·네트워크에서의 다운로드 성공을 보증하지 않습니다.
+
+### v2.0.13 문서·화면 기준
+
+청록색 UI와 설정 복구를 함께 적용한 회귀 테스트 120개(+17 subtests)가 통과했습니다. Windows/macOS GUI 및 Linux CLI 패키지를 제공합니다. 위 스크린샷은 릴리스 소스 `43f6006`을 사용한 오프라인 샘플 화면이며, 기존 실제 CHZZK 구간 다운로드 검증과 구분합니다. 상세 변경 사항은 [CHANGELOG.md](CHANGELOG.md), 플랫폼별 주의 사항은 [RELEASE_NOTES.md](RELEASE_NOTES.md)를 참고하세요.
