@@ -10,7 +10,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 
 
 
-APP_VERSION = "2.0.12"
+APP_VERSION = "2.0.13"
 
 
 def run_smoke_check() -> int:
