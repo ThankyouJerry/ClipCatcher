@@ -85,7 +85,7 @@ class DownloadItemWidget(QWidget):
         self.thumbnail_label.setFixedSize(160, 90)
         self.thumbnail_label.setStyleSheet("""
             QLabel {
-                background-color: #363650;
+                background-color: #2C363D;
                 border-radius: 6px;
                 font-size: 32px;
             }
@@ -118,8 +118,9 @@ class DownloadItemWidget(QWidget):
         info_layout.addWidget(self.progress_bar)
         
         # Status label
-        self.status_label = QLabel("대기 중...")
+        self.status_label = QLabel("대기 중 · 차례가 되면 시작합니다")
         self.status_label.setObjectName("subtitleLabel")
+        self.status_label.setWordWrap(True)
         info_layout.addWidget(self.status_label)
         
         main_layout.addLayout(info_layout, 1)
@@ -150,7 +151,7 @@ class DownloadItemWidget(QWidget):
         container.setLayout(main_layout)
         container.setStyleSheet("""
             QFrame {
-                background-color: #2a2a3e;
+                background-color: #20282D;
                 border-radius: 8px;
             }
         """)
@@ -204,16 +205,16 @@ class DownloadItemWidget(QWidget):
         """Mark download as completed"""
         self.output_path = output_path
         self.progress_bar.setValue(100)
-        self.status_label.setText("✅ 다운로드 완료!")
-        self.status_label.setStyleSheet("color: #10b981; font-weight: 600;")
+        self.status_label.setText("✓ 저장 완료 · 파일을 열 수 있어요")
+        self.status_label.setStyleSheet("color: #79D8AA; font-weight: 600;")
         
         self.cancel_button.setVisible(False)
         self.open_button.setVisible(True)
     
     def set_error(self, error_message: str):
         """Mark download as failed"""
-        self.status_label.setText(f"❌ 오류: {error_message}")
-        self.status_label.setStyleSheet("color: #ef4444; font-weight: 600;")
+        self.status_label.setText(f"다운로드 실패: {error_message}")
+        self.status_label.setStyleSheet("color: #FF9C9C; font-weight: 600;")
         self.cancel_button.setText("제거")
     
     def _on_cancel(self):

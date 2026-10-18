@@ -25,10 +25,11 @@ class TimeRangeWidget(QWidget):
 
         # Container frame
         frame = QFrame()
+        frame.setObjectName("timeRangeFrame")
         frame.setStyleSheet("""
-            QFrame {
-                background-color: #2a2a3e;
-                border: 1px solid #3a3a4e;
+            QFrame#timeRangeFrame {
+                background-color: #20282D;
+                border: 1px solid #43515B;
                 border-radius: 8px;
             }
         """)
@@ -59,7 +60,7 @@ class TimeRangeWidget(QWidget):
         # Start time
         self.start_label = QLabel("시작:")
         self.start_label.setFixedWidth(36)
-        self.start_label.setStyleSheet("color: #aaa; font-size: 12px;")
+        self.start_label.setStyleSheet("color: #B1BFC6; font-size: 12px;")
         self.start_input = QLineEdit()
         self.start_input.setPlaceholderText("0 또는 00:00:00")
         self.start_input.setToolTip("초 단위(예: 90), HH:MM:SS, 또는 45분00초 형식")
@@ -68,7 +69,7 @@ class TimeRangeWidget(QWidget):
         # End time
         self.end_label = QLabel("종료:")
         self.end_label.setFixedWidth(36)
-        self.end_label.setStyleSheet("color: #aaa; font-size: 12px;")
+        self.end_label.setStyleSheet("color: #B1BFC6; font-size: 12px;")
         self.end_input = QLineEdit()
         self.end_input.setPlaceholderText("영상 끝까지")
         self.end_input.setToolTip("비워두면 영상 끝까지 다운로드됩니다.")
@@ -85,7 +86,7 @@ class TimeRangeWidget(QWidget):
 
         # Hint
         self.hint_label = QLabel("※ 초 단위(예: 90), HH:MM:SS(예: 01:30:00), 한글 단위(예: 45분00초) 모두 입력 가능합니다.")
-        self.hint_label.setStyleSheet("color: #666; font-size: 11px; padding-left: 20px;")
+        self.hint_label.setStyleSheet("color: #B1BFC6; font-size: 11px; padding-left: 20px;")
         frame_layout.addWidget(self.hint_label)
 
         outer_layout.addWidget(frame)
@@ -107,7 +108,7 @@ class TimeRangeWidget(QWidget):
         self.hint_label.setEnabled(enabled)
         
         # Visual dimming
-        opacity = "color: #ccc;" if enabled else "color: #555;"
+        opacity = "color: #ccc;" if enabled else "color: #8C9DA6;"
         self.start_label.setStyleSheet(f"{opacity} font-size: 12px;")
         self.end_label.setStyleSheet(f"{opacity} font-size: 12px;")
 
