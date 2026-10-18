@@ -10,6 +10,7 @@ from urllib.parse import urlsplit
 import aiohttp
 
 from core.url_utils import parse_media_url
+from core.network_proxy import https_proxy_for
 
 
 class ChzzkAPI:
@@ -48,6 +49,7 @@ class ChzzkAPI:
                         url,
                         headers=headers,
                         allow_redirects=False,
+                        proxy=https_proxy_for(url),
                     ) as response:
                         if response.status == 200:
                             payload = bytearray()

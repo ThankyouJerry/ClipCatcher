@@ -16,6 +16,8 @@ from typing import List, Dict, Callable, Optional, Tuple
 from urllib.parse import urljoin, urlsplit
 import urllib.parse
 
+from core.network_proxy import https_proxy_for
+
 
 class SegmentDownloader:
     """Downloads HLS streams by manually fetching segments"""
@@ -260,6 +262,7 @@ class SegmentDownloader:
                     url,
                     cookies=self._cookies_for_url(url),
                     allow_redirects=False,
+                    proxy=https_proxy_for(url),
                 ) as response:
                     if response.status == 200:
                         payload = bytearray()
@@ -379,6 +382,7 @@ class SegmentDownloader:
                     url,
                     cookies=self._cookies_for_url(url),
                     allow_redirects=False,
+                    proxy=https_proxy_for(url),
                 ) as response:
                     if response.status != 200:
                         if response.status in self.RETRYABLE_STATUS_CODES:

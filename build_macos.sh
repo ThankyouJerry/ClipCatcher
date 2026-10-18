@@ -28,6 +28,10 @@ codesign --verify --deep --strict --verbose=1 "$STAGED_APP"
 
 echo "🧪 Running packaged smoke test..."
 "$STAGED_APP/Contents/MacOS/ClipCatcher" --smoke
+python3 - "$STAGED_APP/Contents/MacOS/ClipCatcher" <<'PY'
+import subprocess, sys
+subprocess.run([sys.argv[1], '--smoke-gui'], check=True, timeout=30)
+PY
 
 echo "🗜️ Creating release archive..."
 ditto -c -k --sequesterRsrc --keepParent \

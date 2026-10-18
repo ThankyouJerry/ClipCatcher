@@ -1,80 +1,154 @@
-name: Build Windows Only
-
+name: Build native release packages
 on:
   push:
-    tags:
-      - 'v*'
+    tags: ['v*']
+    branches: ['release/v*']
   workflow_dispatch:
-
+  pull_request:
 permissions:
-  contents: write
-
+  contents: read
+concurrency:
+  group: native-release-${{ github.ref }}
+  cancel-in-progress: false
 jobs:
-  build-windows:
+  windows:
     runs-on: windows-latest
+    env:
+      QT_QPA_PLATFORM: offscreen
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v6
-      
-      - name: Set up Python
-        uses: actions/setup-python@v6
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
         with:
-          python-version: '3.11'
-      
-      - name: Install dependencies
+          python-version: '3.12'
+      - run: python -m pip install -r requirements.txt pytest
+      - run: python -m pytest -q
+      - run: python -m PyInstaller --clean --noconfirm build.spec
+      - name: Check packaged application
+        shell: pwsh
         run: |
-          python -m pip install --upgrade pip
-          pip install -r requirements.txt
-          pip install pyinstaller pytest
-
-      - name: Run source tests
-        run: |
-          $env:PYTHONPATH = "src"
-          python -m pytest -q
-          python src/main.py --smoke
-      
-      - name: Build with PyInstaller
-        run: |
-          pyinstaller build.spec
-
-      - name: Smoke test packaged app
-        run: |
-          .\dist\ClipCatcher\ClipCatcher.exe --smoke
-      
-      - name: List dist contents
-        run: |
-          dir dist
-      
-      - name: Create ZIP archive
-        run: |
-          Compress-Archive -Path dist\ClipCatcher\* -DestinationPath ClipCatcher-Windows.zip
-      
-      - name: Upload artifact
-        uses: actions/upload-artifact@v7
+          $process = Start-Process -FilePath ./dist/ClipCatcher/ClipCatcher.exe -ArgumentList '--smoke' -Wait -PassThru
+          if ($process.ExitCode -ne 0) { throw "Packaged smoke failed: $($process.ExitCode)" }
+          $process = Start-Process -FilePath ./dist/ClipCatcher/ClipCatcher.exe -ArgumentList '--smoke-gui' -PassThru
+          if (-not $process.WaitForExit(30000)) { $process.Kill(); throw "GUI smoke timed out" }
+          if ($process.ExitCode -ne 0) { throw "GUI smoke failed: $($process.ExitCode)" }
+      - run: Compress-Archive -Path dist/ClipCatcher/* -DestinationPath ClipCatcher-Windows.zip
+      - uses: actions/upload-artifact@v4
         with:
           name: ClipCatcher-Windows
           path: ClipCatcher-Windows.zip
-
-  release:
-    needs: [build-windows]
-    runs-on: ubuntu-latest
-    if: startsWith(github.ref, 'refs/tags/')
+          if-no-files-found: error
+  macos:
+    runs-on: macos-14
+    env:
+      QT_QPA_PLATFORM: offscreen
     steps:
-      - name: Checkout release notes
-        uses: actions/checkout@v6
-
-      - name: Download Windows artifact
-        uses: actions/download-artifact@v8
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
         with:
-          name: ClipCatcher-Windows
-      
-      - name: Create Release
-        uses: softprops/action-gh-release@v2
+          python-version: '3.12'
+          architecture: arm64
+      - name: Verify native Apple Silicon runner
+        run: test "$(uname -m)" = arm64
+      - run: python -m pip install -r requirements.txt pytest
+      - run: python -m pytest -q
+      - run: bash build_macos.sh
+      - uses: actions/upload-artifact@v4
         with:
-          files: |
-            ClipCatcher-Windows.zip
-          body_path: RELEASE_NOTES.md
-          draft: false
-          prerelease: false
+          name: ClipCatcher-macOS
+          path: dist/ClipCatcher-macOS.zip
+          if-no-files-found: error
+  linux:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: sudo apt-get update && sudo apt-get install -y ffmpeg
+      - run: python -m pip install -r requirements-headless.txt pyinstaller imageio-ffmpeg==0.6.0 pytest
+      - run: python -m pytest -q tests/test_frozen_dispatch.py tests/test_cli.py tests/test_headless_regressions.py tests/test_headless_integration.py tests/test_url_utils.py tests/test_segment_downloader.py tests/test_app_tools.py tests/test_dependency_check.py
+      - run: python -m PyInstaller --clean --noconfirm build_cli.spec
+      - run: python scripts/smoke_frozen_cli.py dist/ClipCatcher-Linux-x86_64/clipcatcher
+      - name: Archive headless package
+        run: |
+          cp docs/LINUX_PACKAGE.md dist/ClipCatcher-Linux-x86_64/README.md
+          cp LICENSE dist/ClipCatcher-Linux-x86_64/
+          tar -C dist -czf ClipCatcher-Linux-x86_64.tar.gz ClipCatcher-Linux-x86_64
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ClipCatcher-Linux-x86_64
+          path: ClipCatcher-Linux-x86_64.tar.gz
+          if-no-files-found: error
+  release:
+    needs: [windows, macos, linux]
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && (startsWith(github.ref, 'refs/heads/release/v') || startsWith(github.ref, 'refs/tags/v'))
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: ClipCatcher-*
+          merge-multiple: true
+          path: release-assets
+      - name: Verify complete release and create checksums
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REF_NAME: ${{ github.ref_name }}
+        run: |
+          export TAG="${REF_NAME#release/}"
+          python - <<'PY'
+          import ast, os
+          from pathlib import Path
+          tree = ast.parse(Path('src/main.py').read_text())
+          version = next(ast.literal_eval(n.value) for n in tree.body if isinstance(n, ast.Assign) and any(isinstance(t, ast.Name) and t.id == 'APP_VERSION' for t in n.targets))
+          assert os.environ['TAG'] == 'v' + version, 'Tag/version mismatch'
+          names = {'ClipCatcher-Windows.zip', 'ClipCatcher-macOS.zip', 'ClipCatcher-Linux-x86_64.tar.gz'}
+          assert {p.name for p in Path('release-assets').iterdir()} == names
+          assert all((Path('release-assets') / name).stat().st_size > 1000000 for name in names)
+          PY
+          cd release-assets
+          sha256sum ClipCatcher-* > SHA256SUMS
+      - name: Create a new draft only, never overwrite an existing release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REF_NAME: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          TAG="${REF_NAME#release/}"
+          # A failed read is not proof of absence. Listing must succeed first.
+          gh api --paginate "repos/$GITHUB_REPOSITORY/releases?per_page=100" --jq '.[].tag_name' > existing-tags.txt
+          if grep -Fxq "$TAG" existing-tags.txt; then
+            echo "Release $TAG already exists; refusing to overwrite it."
+            exit 1
+          fi
+          if [[ "$GITHUB_REF" == refs/heads/release/* ]]; then
+            gh api --paginate "repos/$GITHUB_REPOSITORY/git/matching-refs/tags/" --jq '.[].ref' > existing-refs.txt
+            if grep -Fxq "refs/tags/$TAG" existing-refs.txt; then
+              echo "Tag $TAG already exists; refusing to reuse it."
+              exit 1
+            fi
+            gh release create "$TAG" release-assets/* --target "$GITHUB_SHA" --draft \
+              --title "ClipCatcher $TAG" --notes-file RELEASE_NOTES.md
+          else
+            gh release create "$TAG" release-assets/* --verify-tag --draft \
+            --title "ClipCatcher $TAG" --notes-file RELEASE_NOTES.md
+          fi
+      - name: Verify uploaded asset manifest before publishing
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REF_NAME: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          TAG="${REF_NAME#release/}"
+          gh release view "$TAG" --json isDraft,assets > release-manifest.json
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          release = json.loads(Path('release-manifest.json').read_text())
+          assert release['isDraft'] is True
+          expected = {p.name: p.stat().st_size for p in Path('release-assets').iterdir()}
+          actual = {a['name']: a['size'] for a in release['assets']}
+          assert actual == expected, (actual, expected)
+          PY
+          gh release edit "$TAG" --draft=false

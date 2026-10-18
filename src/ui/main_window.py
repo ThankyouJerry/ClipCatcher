@@ -8,7 +8,7 @@ import subprocess
 import platform
 import os
 from pathlib import Path
-from PyQt6.QtCore import Qt, QThread, QTimer, pyqtSignal
+from PyQt6.QtCore import Qt, QThread, QTimer, pyqtSignal, QCoreApplication
 from PyQt6.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QLabel, QLineEdit, QPushButton, QComboBox,
@@ -1120,7 +1120,7 @@ class MainWindow(QMainWindow):
             "ClipCatcher 정보",
             "<h3>ClipCatcher</h3>"
             "<p>네이버 치지직 VOD 및 클립 다운로더</p>"
-            "<p>Version 2.0.11</p>"
+            f"<p>Version {QCoreApplication.applicationVersion()}</p>"
             "<p>PyQt6 기반 데스크톱 애플리케이션</p>"
         )
 
