@@ -1,55 +1,9 @@
 # ClipCatcher GitHub Release Guide
 
-## Repository
+Use [docs/RELEASING.md](docs/RELEASING.md) as the current release procedure. The previous Windows-only automation and manual macOS upload instructions are obsolete.
 
-- GitHub: `https://github.com/ThankyouJerry/ClipCatcher`
-- Releases: `https://github.com/ThankyouJerry/ClipCatcher/releases`
-- Pages: `https://thankyoujerry.github.io/ClipCatcher/`
+- [Repository](https://github.com/ThankyouJerry/ClipCatcher)
+- [Published releases](https://github.com/ThankyouJerry/ClipCatcher/releases)
+- [Current build status](BUILD_STATUS.md)
 
-## Normal Release Flow
-
-1. Commit all intended source and documentation changes.
-2. Run local checks:
-
-```bash
-PYTHONPATH=src python3 -m py_compile $(find src -name '*.py' -print)
-PYTHONPATH=src python3 src/main.py --smoke
-```
-
-3. Push `main`.
-4. Create and push a new version tag:
-
-```bash
-git tag v2.0.8
-git push origin v2.0.8
-```
-
-5. GitHub Actions builds `ClipCatcher-Windows.zip` automatically.
-6. Build macOS locally and upload `ClipCatcher-macOS.zip` to the same release.
-
-## Manual macOS Asset
-
-```bash
-./build_macos.sh
-cd dist
-zip -r ClipCatcher-macOS.zip ClipCatcher.app
-```
-
-Upload the zip from the GitHub Release page.
-
-## Release Notes Template
-
-```markdown
-## ClipCatcher v2.0.8
-
-### Changes
-- Validate CHZZK fast-replay ranges against the actual HLS playlist duration.
-- Show publish time and video duration as separate metadata fields.
-
-### Downloads
-- Windows: ClipCatcher-Windows.zip
-- macOS: ClipCatcher-macOS.zip
-
-### Notice
-Downloaded videos remain subject to the original creator's copyright and platform terms.
-```
+Windows x64 GUI, macOS Apple Silicon GUI, and Linux x86_64 CLI packages are built and smoke-tested by GitHub Actions. A new version tag or `release/vX.Y.Z` branch produces a draft after native checks pass; the workflow then verifies the uploaded asset manifest and publishes automatically. Manual workflow runs build and verify only. Review assets, SHA256SUMS, platform limits, release notes, README screenshots, and site documentation before starting a publishing workflow. Never overwrite an existing published release to hide a correction; use a new version.

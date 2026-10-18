@@ -26,10 +26,10 @@
         <h1>최신 버전 받기</h1>
         <p class="lead">
           GitHub Releases에서 운영체제에 맞는 압축 파일을 내려받아 실행합니다.
-          macOS와 Windows 배포본을 기준으로 안내합니다.
+          v2.0.13은 Windows x64·macOS Apple Silicon GUI와 Linux x86_64 CLI를 제공합니다.
         </p>
         <div class="actions">
-          <a class="button" href="https://github.com/ThankyouJerry/ClipCatcher/releases" target="_blank" rel="noreferrer">Releases 열기</a>
+          <a class="button" href="https://github.com/ThankyouJerry/ClipCatcher/releases/tag/v2.0.13" target="_blank" rel="noreferrer">Releases 열기</a>
           <a class="button secondary" href="https://github.com/ThankyouJerry/ClipCatcher" target="_blank" rel="noreferrer">GitHub 저장소</a>
         </div>
       </section>
@@ -38,19 +38,27 @@
         <div class="grid two">
           <article class="card">
             <span class="use-case-number">mac</span>
-            <h3>macOS</h3>
-            <p>릴리즈 페이지에서 <code>ClipCatcher-macOS.zip</code> 파일을 내려받아 압축을 풀고 실행합니다.</p>
+            <h3>macOS Apple Silicon</h3>
+            <p>릴리즈 페이지에서 <code>ClipCatcher-macOS.zip</code> 파일을 내려받아 압축을 풀고 실행합니다. Intel Mac 전용 빌드는 없습니다. ad-hoc 서명만 적용되며 Apple 공증은 포함하지 않습니다.</p>
           </article>
           <article class="card">
             <span class="use-case-number">win</span>
-            <h3>Windows</h3>
-            <p>릴리즈 페이지에서 Windows용 zip 파일을 내려받아 압축을 풀고 실행합니다.</p>
+            <h3>Windows x64</h3>
+            <p><code>ClipCatcher-Windows.zip</code>을 풀고 <code>ClipCatcher.exe</code>를 실행합니다. 앱은 코드 서명되지 않았습니다.</p>
+          </article>
+          <article class="card">
+            <span class="use-case-number">cli</span>
+            <h3>Linux x86_64 CLI</h3>
+            <p><code>ClipCatcher-Linux-x86_64.tar.gz</code>를 풀고 <code>./clipcatcher --cli check</code>로 확인합니다. glibc 2.35 이상이 필요하며 GUI는 포함하지 않습니다.</p>
           </article>
         </div>
       </section>
 
       <section class="section panel notice-card">
         <p class="eyebrow">Before Download</p>
+        <h2>무결성·이용 범위 안내</h2>
+        <p>릴리스의 <code>SHA256SUMS</code>로 다운로드 파일의 무결성을 확인하세요. FFmpeg와 yt-dlp는 패키지에 포함되며 FFprobe는 포함되지 않습니다. 자세한 도구·라이선스 정보는 패키지의 <code>third-party-notices</code>를 참고하세요.</p>
+        <p>패키지 검사 통과가 모든 영상·네트워크에서의 다운로드 성공을 보장하지는 않습니다. 로그인·성인 인증·회원 전용 콘텐츠는 CLI 지원 범위 밖이며 접속 제한을 우회하지 않습니다.</p>
         <h2>저작권 안내</h2>
         <p>
           ClipCatcher는 사용자가 접근 가능한 영상의 저장을 돕는 도구입니다.
@@ -66,6 +74,14 @@
 cd ClipCatcher
 pip install -r requirements.txt
 python src/main.py</pre>
+      </section>
+
+      <section class="section panel">
+        <p class="eyebrow">Cloud CLI</p>
+        <h2>Linux·클라우드에서 사용</h2>
+        <p>패키지는 <code>./clipcatcher --cli</code>, 소스는 <code>python src/main.py --cli</code> 뒤에 <code>check</code>, <code>info</code>, <code>download</code> 명령을 사용합니다. 시간 범위를 생략하면 전체 영상이 다운로드됩니다.</p>
+        <p>CHZZK API/HLS는 기존 HTTPS 프록시·<code>NO_PROXY</code> 설정을 따릅니다. 프록시를 새로 구성하거나 <code>.netrc</code> 인증을 자동으로 읽지 않으며 HTTPS 검증과 쿠키 전달 제한을 유지합니다.</p>
+        <p><a href="https://github.com/ThankyouJerry/ClipCatcher#cross-platform-cli--linux-cloud">명령·시간 범위 예시</a> · <a href="https://github.com/ThankyouJerry/ClipCatcher/blob/main/docs/LINUX_PACKAGE.md">Linux 패키지 상세 안내</a></p>
       </section>
 
       <p class="footer">다운로드가 실패하면 필수 도구 설치 안내와 실패 탭의 오류 메시지를 먼저 확인하세요.</p>
