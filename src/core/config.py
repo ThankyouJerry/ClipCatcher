@@ -26,50 +26,86 @@ class Config:
         self.config_dir = Path.home() / ".clipcatcher"
         self.config_file = self.config_dir / "config.json"
         self.legacy_config_file = Path.home() / ".chzzk-downloader" / "config.json"
+        self._recovery_source = None
         self.config = self._load_config()
     
     def _load_config(self) -> Dict[str, Any]:
         """Load configuration from file or create default (with legacy migration)"""
-        if self.config_file.exists():
-            loaded_config = self._load_json(self.config_file)
+        for path in (self.config_file, self.legacy_config_file):
+            if not path.exists():
+                continue
+            loaded_config = self._load_json(path)
             if loaded_config is not None:
-                return self._merge_with_defaults(loaded_config)
-
-        if self.legacy_config_file.exists():
-            loaded_config = self._load_json(self.legacy_config_file)
-            if loaded_config is not None:
-                return self._merge_with_defaults(loaded_config)
-
+                config = self._merge_with_defaults(loaded_config)
+                if any(type(config.get(key)) is not type(value) or config.get(key) != value
+                       for key, value in loaded_config.items()):
+                    self._recovery_source = path
+                return config
+            # An invalid current file must not silently resurrect legacy cookies.
+            return deepcopy(self.DEFAULT_CONFIG)
         return deepcopy(self.DEFAULT_CONFIG)
 
     def _load_json(self, path: Path) -> Optional[Dict[str, Any]]:
-        """Load JSON config from a specific file path."""
+        """Read an object without logging configuration values or credentials."""
         try:
             with open(path, 'r', encoding='utf-8') as f:
                 loaded = json.load(f)
             self._restrict_permissions(path)
+            if not isinstance(loaded, dict):
+                raise ValueError("Configuration must be an object")
             return loaded
-        except Exception as e:
-            print(f"Error loading config from {path}: {e}")
+        except (OSError, ValueError, UnicodeError, RecursionError):
+            self._recovery_source = path
+            print("Invalid or unreadable configuration; using safe defaults.")
             return None
 
     def _merge_with_defaults(self, loaded_config: Dict[str, Any]) -> Dict[str, Any]:
-        """Merge loaded config with defaults, including nested cookie values."""
+        """Keep valid preferences and unknown keys, replacing unsafe known values."""
         config = deepcopy(self.DEFAULT_CONFIG)
         config.update(loaded_config)
-
-        default_cookies = self.DEFAULT_CONFIG.get("cookies", {}).copy()
-        loaded_cookies = loaded_config.get("cookies", {})
-        if isinstance(loaded_cookies, dict):
-            default_cookies.update(loaded_cookies)
-        config["cookies"] = default_cookies
+        for key in ("download_path", "default_quality", "theme"):
+            value = config[key]
+            if (not isinstance(value, str) or not value.strip()
+                    or any(ord(char) < 32 for char in value)):
+                config[key] = self.DEFAULT_CONFIG[key]
+        count = config["concurrent_downloads"]
+        if type(count) is not int or not 1 <= count <= 5:
+            config["concurrent_downloads"] = self.DEFAULT_CONFIG["concurrent_downloads"]
+        cookies = loaded_config.get("cookies", {})
+        config["cookies"] = {
+            key: cookies.get(key, "") if isinstance(cookies, dict)
+            and isinstance(cookies.get(key, ""), str)
+            and not any(ord(char) < 32 for char in cookies.get(key, "")) else ""
+            for key in self.DEFAULT_CONFIG["cookies"]
+        }
         return config
-    
+
+    def _preserve_recovery_source(self):
+        """Keep original bytes before the first save replaces a recovered file."""
+        source = getattr(self, "_recovery_source", None)
+        if source is None:
+            return
+        # mkstemp is exclusive and owner-only; never overwrite an older backup.
+        fd, name = tempfile.mkstemp(prefix="config.recovery.", suffix=".json",
+                                    dir=self.config_dir)
+        backup = Path(name)
+        try:
+            with os.fdopen(fd, "wb") as target, source.open("rb") as original:
+                import shutil
+                shutil.copyfileobj(original, target)
+                target.flush()
+                os.fsync(target.fileno())
+        except Exception:
+            backup.unlink(missing_ok=True)
+            raise
+        self._recovery_source = None
+
     def save(self):
         """Atomically save configuration with owner-only permissions."""
         temp_path = None
         try:
             self.config_dir.mkdir(parents=True, exist_ok=True)
+            self._preserve_recovery_source()
 
             fd, temp_name = tempfile.mkstemp(
                 prefix="config.",
