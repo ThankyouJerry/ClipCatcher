@@ -113,7 +113,7 @@ class MainWindow(QMainWindow):
             QLabel {
                 font-size: 22px;
                 font-weight: 700;
-                color: #00FFA3;
+                color: #79D8CA;
                 padding: 6px 0;
             }
         """)
@@ -164,24 +164,24 @@ class MainWindow(QMainWindow):
         input_layout = QHBoxLayout()
 
         self.url_input = QLineEdit()
-        self.url_input.setPlaceholderText("치지직 또는 YouTube URL을 입력하세요 (예: https://chzzk.naver.com/video/12345 또는 https://youtu.be/xxxxx)")
+        self.url_input.setPlaceholderText("치지직 또는 YouTube 링크 붙여넣기")
         self.url_input.returnPressed.connect(self._fetch_metadata)
         input_layout.addWidget(self.url_input)
 
-        self.status_indicator = QLabel("⚪")
-        self.status_indicator.setStyleSheet("""
-            QLabel {
-                font-size: 24px;
-                padding: 0 8px;
-            }
-        """)
+        self.status_indicator = QLabel("링크를 입력해 주세요")
+        self.status_indicator.setObjectName("subtitleLabel")
+        self.status_indicator.setWordWrap(True)
         self.status_indicator.setToolTip("URL 입력 후 정보를 가져오면 다운로드 가능 여부가 표시됩니다")
-        input_layout.addWidget(self.status_indicator)
-        
+
         self.fetch_button = QPushButton("정보 가져오기")
         self.fetch_button.clicked.connect(self._fetch_metadata)
         input_layout.addWidget(self.fetch_button)
         single_layout.addLayout(input_layout)
+        single_layout.addWidget(self.status_indicator)
+        input_hint = QLabel("링크 입력 → 정보 가져오기 → 화질·범위 선택 → 다운로드")
+        input_hint.setObjectName("subtitleLabel")
+        input_hint.setWordWrap(True)
+        single_layout.addWidget(input_hint)
 
         self.status_message_label = QLabel()
         self.status_message_label.setWordWrap(True)
@@ -233,7 +233,7 @@ class MainWindow(QMainWindow):
         self.thumbnail_label.setFixedSize(240, 135)
         self.thumbnail_label.setStyleSheet("""
             QLabel {
-                background-color: #363650;
+                background-color: #2C363D;
                 border-radius: 8px;
                 font-size: 36px;
             }
@@ -254,15 +254,15 @@ class MainWindow(QMainWindow):
         text_col.addWidget(self.title_label)
 
         self.channel_name = QLabel()
-        self.channel_name.setStyleSheet("font-size: 13px; color: #aaa;")
+        self.channel_name.setStyleSheet("font-size: 13px; color: #B1BFC6;")
         text_col.addWidget(self.channel_name)
 
         self.video_date = QLabel()
-        self.video_date.setStyleSheet("font-size: 12px; color: #777;")
+        self.video_date.setStyleSheet("font-size: 12px; color: #B1BFC6;")
         text_col.addWidget(self.video_date)
 
         self.video_duration = QLabel()
-        self.video_duration.setStyleSheet("font-size: 12px; color: #888;")
+        self.video_duration.setStyleSheet("font-size: 12px; color: #B1BFC6;")
         text_col.addWidget(self.video_duration)
 
         text_col.addStretch()
@@ -273,7 +273,7 @@ class MainWindow(QMainWindow):
 
         quality_label = QLabel("화질:")
         quality_label.setFixedWidth(36)
-        quality_label.setStyleSheet("color: #aaa; font-size: 13px;")
+        quality_label.setStyleSheet("color: #B1BFC6; font-size: 13px;")
         quality_row.addWidget(quality_label)
 
         self.quality_combo = QComboBox()
@@ -341,6 +341,10 @@ class MainWindow(QMainWindow):
         self.download_tabs.addTab(self.completed_list, "완료")
         self.download_tabs.addTab(self.failed_list, "실패")
         layout.addWidget(self.download_tabs, stretch=1)
+        self.download_empty_label = QLabel("아직 다운로드가 없습니다.\n왼쪽에서 영상 링크를 추가하면 진행 상황이 여기에 표시됩니다.")
+        self.download_empty_label.setObjectName("subtitleLabel")
+        self.download_empty_label.setWordWrap(True)
+        layout.addWidget(self.download_empty_label)
 
         group.setLayout(layout)
         self._refresh_download_center()
@@ -388,7 +392,7 @@ class MainWindow(QMainWindow):
         url = self.url_input.text().strip()
         
         # Reset status indicator
-        self.status_indicator.setText("⚪")
+        self.status_indicator.setText("링크 확인 중…")
         self.status_indicator.setToolTip("확인 중...")
         self.status_message_label.setVisible(False)
         
@@ -399,7 +403,7 @@ class MainWindow(QMainWindow):
         self.download_button.setEnabled(False)
         
         if not url:
-            self.status_indicator.setText("🔴")
+            self.status_indicator.setText("링크를 확인해 주세요")
             self.status_indicator.setToolTip("URL을 입력해주세요")
             QMessageBox.warning(self, "오류", "URL을 입력해주세요.")
             return
@@ -407,7 +411,7 @@ class MainWindow(QMainWindow):
         # Parse URL (Chzzk or YouTube)
         parsed = self.api.parse_url(url)
         if not parsed:
-            self.status_indicator.setText("🔴")
+            self.status_indicator.setText("링크를 확인해 주세요")
             self.status_indicator.setToolTip("지원하지 않는 URL입니다")
             QMessageBox.warning(self, "오류", "올바른 치지직 또는 YouTube URL을 입력해주세요.")
             return
@@ -415,7 +419,7 @@ class MainWindow(QMainWindow):
         # Disable button
         self.fetch_button.setEnabled(False)
         self.fetch_button.setText("가져오는 중...")
-        self.status_indicator.setText("🟡")
+        self.status_indicator.setText("영상 정보를 가져오는 중…")
         self.status_indicator.setToolTip("정보를 가져오는 중...")
         
         try:
@@ -431,7 +435,7 @@ class MainWindow(QMainWindow):
             self._display_metadata(metadata)
             
         except Exception as e:
-            self.status_indicator.setText("🔴")
+            self.status_indicator.setText("영상 정보를 가져오지 못했어요")
             self.status_indicator.setToolTip(f"오류: {str(e)}")
             QMessageBox.critical(self, "오류", f"메타데이터를 가져오는데 실패했습니다:\n{str(e)}")
         
@@ -557,19 +561,19 @@ class MainWindow(QMainWindow):
         vod_status = metadata.get('vod_status', 'UNKNOWN')
         
         if is_downloadable:
-            self.status_indicator.setText("🟢")
+            self.status_indicator.setText("✓ 다운로드 가능 · 화질과 범위를 선택하세요")
             self.status_indicator.setToolTip("다운로드 가능")
             self.status_message_label.setVisible(False)
             self.download_button.setEnabled(True)
             self.download_button.setText("다운로드")
         else:
             # Fast replay / upload state - Manual download available
-            self.status_indicator.setText("🟠")
+            self.status_indicator.setText("수동 다운로드 가능 · 시간이 더 걸릴 수 있어요")
             self.status_indicator.setToolTip("수동 다운로드 (느릴 수 있음)")
             self.status_message_label.setVisible(True)
             self.status_message_label.setStyleSheet("""
                 QLabel {
-                    color: #FF9F43;
+                    color: #F0C478;
                     background-color: rgba(255, 159, 67, 0.1);
                     padding: 10px;
                     border-radius: 8px;
@@ -1058,6 +1062,7 @@ class MainWindow(QMainWindow):
         active_count = self.active_list.count()
         completed_count = self.completed_list.count()
         failed_count = self.failed_list.count()
+        self.download_empty_label.setVisible(active_count + completed_count + failed_count == 0)
         queued_count = len(self.pending_download_ids)
         running_count = len(self.running_download_ids)
 

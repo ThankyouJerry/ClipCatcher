@@ -4,18 +4,18 @@ Modern UI Styles for ClipCatcher
 
 # Color palette
 COLORS = {
-    'primary': '#6366f1',      # Indigo
-    'primary_hover': '#4f46e5',
-    'secondary': '#8b5cf6',    # Purple
-    'background': '#1e1e2e',   # Dark background
-    'surface': '#2a2a3e',      # Card background
-    'surface_light': '#363650',
-    'text': '#e0e0e0',         # Light text
-    'text_secondary': '#a0a0b0',
-    'success': '#10b981',      # Green
-    'error': '#ef4444',        # Red
-    'warning': '#f59e0b',      # Orange
-    'border': '#3a3a4e',
+    'primary': '#147D73',      # Teal
+    'primary_hover': '#116B63',
+    'secondary': '#79D8CA',    # Soft teal
+    'background': '#171C20',   # Dark background
+    'surface': '#20282D',      # Card background
+    'surface_light': '#2C363D',
+    'text': '#F0F4F5',         # Light text
+    'text_secondary': '#B1BFC6',
+    'success': '#79D8AA',      # Green
+    'error': '#FF9C9C',        # Red
+    'warning': '#F0C478',      # Orange
+    'border': '#43515B',
 }
 
 def get_stylesheet() -> str:
@@ -23,7 +23,7 @@ def get_stylesheet() -> str:
     return f"""
     /* Global Styles */
     QWidget {{
-        background-color: {COLORS['background']};
+        background-color: transparent;
         color: {COLORS['text']};
         font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
         font-size: 13px;
@@ -40,9 +40,9 @@ def get_stylesheet() -> str:
         color: white;
         border: none;
         border-radius: 6px;
-        padding: 10px 20px;
+        padding: 8px 14px;
         font-weight: 600;
-        min-height: 36px;
+        min-height: 24px;
     }}
     
     QPushButton:hover {{
@@ -50,7 +50,7 @@ def get_stylesheet() -> str:
     }}
     
     QPushButton:pressed {{
-        background-color: #3730a3;
+        background-color: #0D5C55;
     }}
     
     QPushButton:disabled {{
@@ -69,13 +69,19 @@ def get_stylesheet() -> str:
     }}
     
     QPushButton#dangerButton {{
-        background-color: {COLORS['error']};
+        background-color: {COLORS['surface']};
+        color: {COLORS['error']};
+        border: 1px solid {COLORS['border']};
     }}
     
     QPushButton#dangerButton:hover {{
-        background-color: #dc2626;
+        background-color: #482E33;
     }}
     
+    QPushButton:focus, QRadioButton:focus {{
+        border: 2px solid {COLORS['secondary']};
+    }}
+
     /* Line Edit (Text Input) */
     QLineEdit {{
         background-color: {COLORS['surface']};
@@ -83,6 +89,7 @@ def get_stylesheet() -> str:
         border-radius: 6px;
         padding: 10px 12px;
         color: {COLORS['text']};
+        placeholder-text-color: {COLORS['text_secondary']};
         selection-background-color: {COLORS['primary']};
     }}
     
@@ -96,11 +103,29 @@ def get_stylesheet() -> str:
         border-radius: 6px;
         padding: 10px 12px;
         color: {COLORS['text']};
+        placeholder-text-color: {COLORS['text_secondary']};
         selection-background-color: {COLORS['primary']};
     }}
 
     QPlainTextEdit:focus {{
         border-color: {COLORS['primary']};
+    }}
+
+    QRadioButton {{
+        spacing: 8px;
+    }}
+
+    QRadioButton::indicator {{
+        width: 12px;
+        height: 12px;
+        border: 1px solid {COLORS['text_secondary']};
+        border-radius: 7px;
+        background-color: {COLORS['surface']};
+    }}
+
+    QRadioButton::indicator:checked {{
+        background-color: {COLORS['secondary']};
+        border: 1px solid {COLORS['secondary']};
     }}
 
     QRadioButton#inputMode {{
@@ -120,6 +145,7 @@ def get_stylesheet() -> str:
     QRadioButton#inputMode::indicator {{
         width: 0px;
         height: 0px;
+        border: none;
     }}
     
     /* Combo Box (Dropdown) */
@@ -129,7 +155,7 @@ def get_stylesheet() -> str:
         border-radius: 6px;
         padding: 8px 12px;
         color: {COLORS['text']};
-        min-height: 36px;
+        min-height: 24px;
     }}
     
     QComboBox:hover {{
@@ -162,11 +188,11 @@ def get_stylesheet() -> str:
         border: none;
         border-radius: 4px;
         text-align: center;
-        height: 8px;
+        min-height: 20px;
     }}
     
     QProgressBar::chunk {{
-        background-color: {COLORS['primary']};
+        background-color: {COLORS['primary_hover']};
         border-radius: 4px;
     }}
     
@@ -289,7 +315,7 @@ def get_stylesheet() -> str:
     QTabBar::tab {{
         background-color: {COLORS['surface']};
         color: {COLORS['text_secondary']};
-        padding: 10px 20px;
+        padding: 8px 14px;
         border-top-left-radius: 6px;
         border-top-right-radius: 6px;
         margin-right: 2px;
