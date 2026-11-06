@@ -1,3 +1,4 @@
 # Linux/cloud runtime. Install ffmpeg (and ffprobe) through your OS package manager.
-yt-dlp==2026.10.26
+yt-dlp==2026.10.26; python_version >= "3.11"
+yt-dlp==2026.10.21; python_version < "3.11"
 aiohttp>=3.9.0

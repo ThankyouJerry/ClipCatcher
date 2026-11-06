@@ -29,3 +29,7 @@ Windows 앱은 코드 서명되지 않았으며 macOS 앱은 ad-hoc 서명만 �
 - yt-dlp는 검증한 2026.10.26 버전을 포함합니다. FFmpeg와 기타 구성요소의 버전·라이선스는 패키지의 third-party-notices를 확인하세요.
 - 수정은 단일 미디어 파일의 바이트 구간을 가리키는 DASH 형태에 한정됩니다. 다른 미지원 목록·인증·권한·네트워크 오류는 별도로 표시될 수 있습니다.
 - 실제 서비스의 모든 영상·구간에 대한 다운로드 성공을 보장하지 않습니다.
+
+### Build compatibility
+- Python 3.10 source installs use yt-dlp 2026.10.21, the last compatible release. Packaged Python 3.12 apps use the validated 2026.10.26 engine.
+- Apple Silicon release builds use the supported macOS 15 runner.
