@@ -4,7 +4,7 @@ Custom widget for displaying download progress
 """
 from PyQt6.QtWidgets import (
     QWidget, QHBoxLayout, QVBoxLayout, QLabel, 
-    QProgressBar, QPushButton, QFrame, QSizePolicy
+    QProgressBar, QPushButton, QFrame, QSizePolicy, QDialog, QPlainTextEdit, QDialogButtonBox
 )
 from PyQt6.QtCore import Qt, pyqtSignal, QThread, QTimer
 from PyQt6.QtGui import QPixmap
@@ -12,6 +12,7 @@ import os
 import urllib.request
 import weakref
 from urllib.parse import urlsplit
+from core.error_diagnostics import sanitize_error, save_error_report
 
 class ThumbnailLoader(QThread):
     """Thread for loading thumbnail images"""
@@ -66,6 +67,8 @@ class DownloadItemWidget(QWidget):
         self.thumbnail_url = thumbnail_url
         self.output_path = ""
         self._compact = False
+        self.error_text = ""
+        self.error_report_path = None
         
         self._init_ui()
         
@@ -121,6 +124,7 @@ class DownloadItemWidget(QWidget):
         self.status_label = QLabel("대기 중 · 차례가 되면 시작합니다")
         self.status_label.setObjectName("subtitleLabel")
         self.status_label.setWordWrap(True)
+        self.status_label.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
         info_layout.addWidget(self.status_label)
         
         main_layout.addLayout(info_layout, 1)
@@ -142,6 +146,10 @@ class DownloadItemWidget(QWidget):
         self.open_button.clicked.connect(self._on_open_file)
         button_layout.addWidget(self.open_button)
         
+        self.error_button = QPushButton("오류 상세")
+        self.error_button.setVisible(False)
+        self.error_button.clicked.connect(self._show_error_details)
+        button_layout.addWidget(self.error_button)
         button_layout.addStretch()
         
         main_layout.addLayout(button_layout)
@@ -213,10 +221,30 @@ class DownloadItemWidget(QWidget):
     
     def set_error(self, error_message: str):
         """Mark download as failed"""
-        self.status_label.setText(f"다운로드 실패: {error_message}")
+        self.error_text = sanitize_error(error_message)
+        self.error_report_path = save_error_report(self.error_text)
+        self.status_label.setText("다운로드 실패 · 오류 상세를 확인해주세요")
+        self.error_button.setVisible(True)
         self.status_label.setStyleSheet("color: #FF9C9C; font-weight: 600;")
         self.cancel_button.setText("제거")
     
+    def _show_error_details(self):
+        dialog = QDialog(self)
+        dialog.setWindowTitle("다운로드 오류 상세")
+        dialog.resize(760, 480)
+        layout = QVBoxLayout(dialog)
+        details = QPlainTextEdit(dialog)
+        details.setReadOnly(True)
+        text = self.error_text
+        if self.error_report_path:
+            text += "\n\n저장된 진단 로그: " + self.error_report_path
+        details.setPlainText(text)
+        layout.addWidget(details)
+        buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Close)
+        buttons.rejected.connect(dialog.reject)
+        layout.addWidget(buttons)
+        dialog.exec()
+
     def _on_cancel(self):
         """Handle cancel button click"""
         self.cancel_requested.emit(self.download_id)

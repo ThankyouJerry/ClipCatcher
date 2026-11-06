@@ -47,7 +47,8 @@ def test_empty_guidance_and_input_modes_preserve_values():
         assert not window.download_empty_label.isHidden()
         window.close()
 
-def test_download_status_and_cancel_signal():
+def test_download_status_and_cancel_signal(monkeypatch):
+    monkeypatch.setattr("ui.download_item.save_error_report", lambda _text: None)
     item = DownloadItemWidget('example', '영상')
     cancelled = []
     item.cancel_requested.connect(cancelled.append)

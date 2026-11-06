@@ -10,7 +10,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 
 
 
-APP_VERSION = "2.0.13"
+APP_VERSION = "2.0.14"
 
 
 def run_smoke_check() -> int:
@@ -78,6 +78,8 @@ def main():
     if len(sys.argv) > 1 and sys.argv[1] == "--run-yt-dlp":
         # A frozen executable is not a Python interpreter: `-m yt_dlp`
         # would restart ClipCatcher. Dispatch before importing any GUI modules.
+        from core.chzzk_dash_compat import install_chzzk_dash_compat
+        install_chzzk_dash_compat()
         import yt_dlp
         yt_dlp.main(sys.argv[2:])
         return 0

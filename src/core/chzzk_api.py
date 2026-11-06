@@ -41,7 +41,7 @@ class ChzzkAPI:
 
     async def _request_json(self, url: str, headers: Dict[str, str]) -> Dict:
         """Fetch a bounded JSON response with retries for transient failures."""
-        last_was_timeout = False
+        last_failure = "알 수 없는 네트워크 오류"
         for attempt in range(3):
             try:
                 async with aiohttp.ClientSession(timeout=self.request_timeout) as session:
@@ -75,27 +75,38 @@ class ChzzkAPI:
 
                         if response.status in {401, 403}:
                             raise RuntimeError(
-                                "CHZZK 콘텐츠에 접근할 수 없습니다. "
+                                f"CHZZK 콘텐츠에 접근할 수 없습니다. (HTTP {response.status}) "
                                 "로그인 쿠키 또는 시청 권한을 확인해주세요."
                             )
                         if response.status == 404:
-                            raise RuntimeError("CHZZK 콘텐츠를 찾을 수 없습니다.")
+                            raise RuntimeError("CHZZK 콘텐츠를 찾을 수 없습니다. (HTTP 404)")
                         if response.status not in self.RETRYABLE_STATUS_CODES:
                             raise RuntimeError(
                                 f"CHZZK API 요청 실패 (HTTP {response.status})"
                             )
-                        last_was_timeout = False
+                        if response.status == 429:
+                            last_failure = "요청이 너무 많습니다. (HTTP 429) 잠시 후 다시 시도해주세요."
+                        else:
+                            last_failure = f"서버 응답 오류입니다. (HTTP {response.status}) 잠시 후 다시 시도해주세요."
             except asyncio.TimeoutError:
-                last_was_timeout = True
-            except aiohttp.ClientError:
-                last_was_timeout = False
+                last_failure = "응답 시간이 초과되었습니다."
+            except aiohttp.ClientHttpProxyError as exc:
+                last_failure = f"프록시 연결이 거부되었습니다. (HTTP {exc.status}) 프록시 설정 또는 관리자 정책을 확인해주세요."
+            except aiohttp.ClientConnectorCertificateError:
+                last_failure = "TLS 인증서를 확인할 수 없습니다. 시스템 날짜와 신뢰 인증서를 확인해주세요."
+            except aiohttp.ClientSSLError:
+                last_failure = "TLS 보안 연결에 실패했습니다. 네트워크와 인증서 설정을 확인해주세요."
+            except aiohttp.ClientProxyConnectionError:
+                last_failure = "설정된 프록시에 연결할 수 없습니다. 프록시 상태를 확인해주세요."
+            except aiohttp.ClientError as exc:
+                # Never expose exception text: it can contain cookies, proxy
+                # credentials, signed playback URLs or response bodies.
+                last_failure = f"네트워크 요청에 실패했습니다. ({type(exc).__name__}) 연결 상태를 확인해주세요."
 
             if attempt < 2:
                 await asyncio.sleep(0.4 * (2**attempt))
 
-        if last_was_timeout:
-            raise RuntimeError("CHZZK API 응답 시간이 초과되었습니다.")
-        raise RuntimeError("CHZZK API 요청에 실패했습니다. 잠시 후 다시 시도해주세요.")
+        raise RuntimeError(f"CHZZK API {last_failure}") from None
 
     def _request_headers(self, cookies: str) -> Dict[str, str]:
         headers = self.headers.copy()

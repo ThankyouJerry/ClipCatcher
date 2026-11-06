@@ -186,9 +186,18 @@ class DownloadJob:
         service because the bundled Python package can lag behind site changes.
         """
         self._refresh_clip_stream_url()
-        if resolve_yt_dlp_binary():
+        parsed = parse_media_url(self.url)
+        chzzk_vod = parsed and parsed.get("type") == "vod"
+        if chzzk_vod and getattr(sys, "frozen", False):
+            self._run_ytdlp_binary_download([sys.executable, "--run-yt-dlp"])
+        elif chzzk_vod and self.use_subprocess:
+            entrypoint = str(Path(__file__).resolve().parents[1] / "main.py")
+            self._run_ytdlp_binary_download([sys.executable, entrypoint, "--run-yt-dlp"])
+        elif chzzk_vod:
+            self._run_ytdlp_package_download()
+        elif resolve_yt_dlp_binary():
             self._run_ytdlp_binary_download()
-        elif self.use_subprocess:
+        elif self.use_subprocess or getattr(sys, "frozen", False):
             # CLI cancellation must include package-backed FFmpeg subprocesses.
             prefix = ([sys.executable, "--run-yt-dlp"] if getattr(sys, "frozen", False)
                       else [sys.executable, "-m", "yt_dlp"])
@@ -237,6 +246,9 @@ class DownloadJob:
             "--fragment-retries", "10",
             "--extractor-retries", "3",
         ]
+        parsed = parse_media_url(self.url)
+        if parsed and parsed.get("type") == "vod":
+            cmd += ["--downloader", "dash:ffmpeg"]
         fmt = select_download_format(self.url, self.format_selector)
         cmd += ["-f", fmt]
         cmd += ["--merge-output-format", "mp4"]
@@ -477,6 +489,11 @@ class DownloadJob:
             
             self.status_changed.emit("다운로드 시작 중...")
             
+            parsed = parse_media_url(self.url)
+            if parsed and parsed.get("type") == "vod":
+                from core.chzzk_dash_compat import install_chzzk_dash_compat
+                install_chzzk_dash_compat()
+                ydl_opts['external_downloader'] = {'dash': 'ffmpeg'}
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                 if self.should_stop:
                     return
