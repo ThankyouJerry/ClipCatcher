@@ -1,5 +1,5 @@
 PyQt6>=6.6.0
-yt-dlp>=2024.0.0
+yt-dlp==2026.10.26
 aiohttp>=3.9.0
 qasync>=0.24.0
 Pillow>=10.0.0

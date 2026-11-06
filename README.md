@@ -27,12 +27,13 @@ ClipCatcher는 기존 `chzzkdownloader`를 발전시킨 후속작으로, 더 나
 
 ## Latest Update
 
-[`v2.0.13`](https://github.com/ThankyouJerry/ClipCatcher/releases/tag/v2.0.13)이 공개되었습니다.
+v2.0.14에는 CHZZK DASH 파싱 오류와 다운로드 진단 개선이 포함됩니다. 공개된 패키지는 [최신 릴리스](https://github.com/ThankyouJerry/ClipCatcher/releases/latest)에서 확인하세요.
 
-- 차분한 청록색 테마와 읽기 쉬운 상태 안내, 키보드 포커스 표시를 적용했습니다.
-- URL 입력 순서와 빈 다운로드 목록 안내를 추가하고 완료·실패 메시지를 명확히 했습니다.
-- 잘못된 설정 JSON 값과 지원하지 않는 필드 형식을 안전한 기본값으로 복구합니다.
-- v2.0.12의 Linux/클라우드 CLI, 기존 HTTPS 프록시 지원, 다운로드 취소·프로세스 정리 개선을 포함합니다.
+- 일부 단일 파일 DASH 목록에서 `KeyError('sourceURL')`가 발생하던 문제를 수정했습니다.
+- 오래된 외부 yt-dlp보다 최신 번들을 사용하고, CHZZK VOD에는 호환 처리가 포함된 엔진을 사용합니다.
+- 실패 항목의 `오류 상세`에서 전체 메시지를 확인·복사할 수 있습니다. 민감정보를 제거한 로컬 진단 로그도 저장합니다.
+- CHZZK API의 HTTP 상태, 프록시, 인증서, 연결, 시간초과 오류를 구별합니다.
+- 기존 설정·쿠키·저장 폴더와 다운로드 자료를 유지합니다.
 
 Windows x64 GUI, macOS Apple Silicon GUI, Linux x86_64 CLI 패키지와 `SHA256SUMS`를 릴리스 페이지에서 받을 수 있습니다. 기존 다운로드 파일은 유지됩니다. 플랫폼별 실행 방법과 서명 제한은 아래 Download 항목을 확인하세요.
 

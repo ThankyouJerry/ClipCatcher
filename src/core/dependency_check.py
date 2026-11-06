@@ -4,6 +4,7 @@ External dependency detection helpers for yt-dlp and ffmpeg.
 from __future__ import annotations
 
 import os
+import re
 import subprocess
 from dataclasses import dataclass
 from typing import List, Optional
@@ -51,14 +52,32 @@ def is_yt_dlp_binary_usable(binary: Optional[str]) -> bool:
     return _run_version(binary, "--version").available
 
 
+def _release_date(version):
+    match = re.match(r"^(\d{4})[.](\d{1,2})[.](\d{1,2})(?:$|[.\-+])", version or "")
+    return tuple(map(int, match.groups())) if match else None
+
+
 def resolve_yt_dlp_binary() -> Optional[str]:
+    """Do not let an older external engine shadow the newer bundled engine."""
+    try:
+        import yt_dlp
+        bundled_date = _release_date(yt_dlp.version.__version__)
+    except (ImportError, AttributeError):
+        bundled_date = None
     checked = set()
     for candidate in get_yt_dlp_binary_candidates():
         if not candidate or candidate in checked:
             continue
         checked.add(candidate)
-        if is_yt_dlp_binary_usable(candidate):
-            return candidate
+        if not os.path.isfile(candidate) or not os.access(candidate, os.X_OK):
+            continue
+        status = _run_version(candidate, "--version")
+        if not status.available:
+            continue
+        external_date = _release_date(status.version)
+        if bundled_date and external_date and external_date < bundled_date:
+            continue
+        return candidate
     return None
 
 
