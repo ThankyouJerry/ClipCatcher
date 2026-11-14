@@ -1,3 +1,8 @@
+# v2.0.15
+
+- Fix section-download progress stuck at 0% by consuming FFmpeg machine-readable progress, independent of quiet logging.
+- Add regression coverage for intermediate progress and completion path.
+
 # 변경 이력
 
 ClipCatcher의 사용자에게 영향을 주는 변경 사항을 버전별로 기록합니다.

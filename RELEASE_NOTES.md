@@ -1,35 +1,20 @@
-## ClipCatcher v2.0.14
+## ClipCatcher v2.0.15
 
-### 주요 변경 사항
+### 수정 사항
+- 구간 다운로드가 진행되는데도 0%와 ‘다운로드 시작 중’에 머물던 진행률 표시를 수정했습니다.
+- FFmpeg 전용 진행 스트림으로 실제 처리 시간을 읽어 선택 구간 대비 진행률을 표시합니다. 저장 완료 전에는 최대 99%까지 표시합니다.
+- 기존 설정·쿠키·저장 경로·다운로드 파일은 유지됩니다.
 
-- CHZZK 단일 파일 DASH 목록의 `KeyError('sourceURL')` 호환 문제를 수정했습니다.
-- 오래된 외부 yt-dlp가 번들보다 우선하던 문제를 수정했습니다. CHZZK VOD는 호환 처리된 번들 엔진을 사용합니다.
-- 실패 카드에 전체 메시지를 확인·복사하는 `오류 상세` 창과 민감정보를 제거한 로컬 로그를 추가했습니다.
-- API 오류의 HTTP 상태·프록시·TLS·연결·시간초과를 구분합니다.
-- 기존 설정·쿠키·다운로드 파일·저장 경로는 유지합니다.
+### 검증
+- macOS 설치 앱에서 치지직과 YouTube 각각 20초·1080p 구간 다운로드, 중간 진행률 갱신, 완료를 확인했습니다.
+- 두 출력 모두 H.264/AAC이며 정확히 20초, 전체 디코딩 검사에서 오류가 없었습니다.
+- 진행률 회귀 테스트와 Windows/macOS/Linux 패키지 검사를 포함합니다. 모든 영상·네트워크 환경의 성공을 보장하지는 않습니다.
 
 ### 다운로드
+- Windows x64: `ClipCatcher-Windows.zip`
+- macOS Apple Silicon: `ClipCatcher-macOS.zip` (Intel 전용 빌드 없음)
+- Linux x86_64: `ClipCatcher-Linux-x86_64.tar.gz` (glibc 2.35 이상, 명령줄 패키지)
+- 무결성 확인: `SHA256SUMS`
 
-- Windows x64: `ClipCatcher-Windows.zip`을 풀고 `ClipCatcher.exe` 실행
-- macOS Apple Silicon: `ClipCatcher-macOS.zip`을 풀고 앱을 응용 프로그램 폴더로 이동 (Intel Mac 전용 빌드 없음)
-- Linux x86_64 (glibc 2.35 이상): `ClipCatcher-Linux-x86_64.tar.gz`를 풀고 `./clipcatcher --cli check` 실행. GUI 앱이 아닌 명령줄 패키지입니다.
-- 파일 무결성 확인: `SHA256SUMS`
-
-Windows 앱은 코드 서명되지 않았으며 macOS 앱은 ad-hoc 서명만 되어 있습니다. Apple 공증은 포함하지 않습니다.
-패키지 검사 통과가 모든 영상·네트워크 환경에서의 다운로드 성공을 보장하지는 않습니다.
-치지직 접속 제한이나 DNS 오류가 있는 환경에서는 서비스 접근이 가능한 네트워크가 필요합니다.
-
-다운로드한 콘텐츠의 저작권은 원 저작권자에게 있습니다. 플랫폼 이용약관과 저작권자의 허락 범위를 확인해 주세요.
-
-### 검증 범위와 포함 도구
-
-- macOS 자동 회귀 테스트와 설치 실행파일의 시작·GUI·yt-dlp 실행을 확인했습니다.
-- 생성한 로컬 DASH 표본에서 원래 파싱 오류를 재현하고, 실제 설치 실행파일로 영상·음성 병합 및 2초 구간 저장을 확인했습니다. 출력은 H.264/AAC이며 전체 디코딩 오류가 없었습니다.
-- 네이티브 Windows/macOS/Linux 빌드와 각 패키지 검사가 모두 성공해야 기존 배포 절차가 이 릴리스를 게시합니다.
-- yt-dlp는 검증한 2026.10.26 버전을 포함합니다. FFmpeg와 기타 구성요소의 버전·라이선스는 패키지의 third-party-notices를 확인하세요.
-- 수정은 단일 미디어 파일의 바이트 구간을 가리키는 DASH 형태에 한정됩니다. 다른 미지원 목록·인증·권한·네트워크 오류는 별도로 표시될 수 있습니다.
-- 실제 서비스의 모든 영상·구간에 대한 다운로드 성공을 보장하지 않습니다.
-
-### Build compatibility
-- Python 3.10 source installs use yt-dlp 2026.10.21, the last compatible release. Packaged Python 3.12 apps use the validated 2026.10.26 engine.
-- Apple Silicon release builds use the supported macOS 15 runner.
+Windows는 미서명, macOS는 ad-hoc 서명이며 Apple 공증은 포함하지 않습니다.
+다운로드한 콘텐츠의 저작권과 플랫폼 이용약관을 준수해 주세요.

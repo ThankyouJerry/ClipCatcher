@@ -253,6 +253,7 @@ class DownloadJob:
         cmd += ["-f", fmt]
         cmd += ["--merge-output-format", "mp4"]
         cmd += ["--print", "after_move:CLIPCATCHER_OUTPUT:%(filepath)s", "--progress"]
+        cmd += ["--downloader-args", "ffmpeg:-progress pipe:1 -nostats -stats_period 0.5"]
         cmd += ["--newline"]        # 진행률 한 줄씩 출력
         cmd += ["--no-warnings"]
         cmd += ["-o", output_template]
@@ -367,6 +368,17 @@ class DownloadJob:
                 recent_lines.append(line)
                 if len(recent_lines) > 20:
                     recent_lines.pop(0)
+
+            # Machine-readable FFmpeg progress remains available when --print
+            # makes yt-dlp/FFmpeg quiet. It is line-delimited even off a TTY.
+            if line.startswith("out_time="):
+                elapsed = _ftime_to_secs(line.split("=", 1)[1])
+                if section_duration and section_duration > 0:
+                    pct = max(0, min(int(elapsed / section_duration * 100), 99))
+                    self.progress_updated.emit(pct, 0, 0)
+                    self.status_changed.emit(f"구간 다운로드 중... {pct}%")
+                else:
+                    self.status_changed.emit(f"다운로드 중... {elapsed:.1f}초 처리")
 
             # ── [download] X% 진행률 (일반 다운로드) ───────────
             pm = pct_re.search(line)
